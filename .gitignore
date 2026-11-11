@@ -3,3 +3,4 @@
 .env.*
 /config.php
 *.log
+/config.local.php
