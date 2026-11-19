@@ -17,6 +17,10 @@ $error = '';
 $success = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
     $name = trim($_POST['name'] ?? '');
     $email = trim($_POST['email'] ?? '');
     $phone = trim($_POST['phone'] ?? '');
@@ -85,6 +89,7 @@ include "../layouts/header.php";
                 </div>
                 <div class="card-body">
                     <form action="suppliers.php" method="POST">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
                             <label class="form-label font-weight-bold">Supplier Name</label>
                             <input type="text" name="name" class="form-control" placeholder="Company or person name" required>

@@ -1,11 +1,13 @@
 <?php
-error_reporting(0);
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
 
 session_start();
-include "../../config.php";
+define('APP_JSON_RESPONSE', true);
+require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/../../includes/pos-checkout.php';
 
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=utf-8');
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     header('Allow: POST');
@@ -20,155 +22,129 @@ if (!isset($_SESSION['pos_checkout_csrf']) || !is_string($csrfToken) || !hash_eq
     exit();
 }
 
-if (($appSettings['pos_enabled'] ?? '1') !== '1') {
-    http_response_code(403);
-    echo json_encode(['status' => 'error', 'message' => 'The POS module is disabled in Admin Settings.']);
+$input = json_decode(file_get_contents('php://input'), true);
+$paymentMethod = is_array($input) ? ($input['payment_method'] ?? null) : null;
+$requestedCart = is_array($input) ? ($input['cart'] ?? null) : null;
+if (!is_string($paymentMethod) || !in_array($paymentMethod, ['Cash', 'Online Transfer'], true)) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'Choose a supported payment method.']);
     exit();
 }
 
-// Stripe Secret Key fetch (Environment ya config se)
-$stripeSecretKey = get_env_setting('STRIPE_SECRET_KEY', get_env_setting('STRIPE_API_KEY'));
-if (empty($stripeSecretKey) && isset($stripeSecretKeyConfig)) {
-    $stripeSecretKey = $stripeSecretKeyConfig;
-}
-
-if (file_exists("../../vendor/autoload.php")) {
-    require_once "../../vendor/autoload.php";
-    if (!empty($stripeSecretKey)) {
-        \Stripe\Stripe::setApiKey($stripeSecretKey);
-    }
+$stripeSecretKey = trim((string) ($appSettings['stripe_secret_key'] ?? ''));
+if ($stripeSecretKey === '') {
+    $stripeSecretKey = get_env_setting('STRIPE_SECRET_KEY', get_env_setting('STRIPE_API_KEY', $stripeSecretKeyConfig));
 }
 
 try {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $cart = $input['cart'] ?? [];
-    $payment_method = $input['payment_method'] ?? 'Cash';
-
-    // Sirf Cash aur Online Transfer allowed hain
-    if (!is_string($payment_method) || !in_array($payment_method, ['Cash', 'Online Transfer'], true)) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Choose a supported payment method.']);
+    $transactionStarted = false;
+    if ($paymentMethod === 'Cash') {
+        $conn->begin_transaction();
+        $transactionStarted = true;
+        $cart = validatePosCart($conn, $requestedCart, true);
+        $subtotalCents = 0;
+        foreach ($cart as $item) {
+            $subtotalCents += (int) round($item['price'] * 100) * $item['qty'];
+        }
+        $taxRate = (float) ($appSettings['pos_tax_rate'] ?? 0);
+        $taxCents = (int) round($subtotalCents * $taxRate / 100);
+        $total = ($subtotalCents + $taxCents) / 100;
+        $orderId = insertPosOrder($conn, $cart, $total, $paymentMethod, 'Walk-in Counter POS');
+        $conn->commit();
+        $transactionStarted = false;
+        notifyPosOrder($conn, $orderId, $paymentMethod, $cart);
+        echo json_encode(['status' => 'success', 'order_id' => $orderId]);
         exit();
     }
-    $isGatewayPayment = in_array($payment_method, ['Online Transfer'], true);
-    
-    if (empty($cart)) {
-        echo json_encode(['status' => 'error', 'message' => 'Cart is empty!']);
+
+    if (!class_exists('\Stripe\Stripe')) {
+        http_response_code(503);
+        echo json_encode(['status' => 'error', 'message' => 'The Stripe payment library is unavailable.']);
+        exit();
+    }
+    if ($stripeSecretKey === '') {
+        http_response_code(503);
+        echo json_encode(['status' => 'error', 'message' => 'Online payment is not configured.']);
         exit();
     }
 
-    $subtotal = 0;
-    $line_items = [];
+    $cart = validatePosCart($conn, $requestedCart);
+    $currency = strtolower((string) ($appSettings['currency'] ?? 'USD'));
+    if (!preg_match('/^[a-z]{3}$/', $currency)) {
+        throw new InvalidArgumentException('The store currency is invalid.');
+    }
+
+    $subtotalCents = 0;
+    $lineItems = [];
     foreach ($cart as $item) {
-        $itemTotal = $item['price'] * $item['qty'];
-        $subtotal += $itemTotal;
-
-        if ($isGatewayPayment) {
-            $line_items[] = [
-                'price_data' => [
-                    'currency' => strtolower($appSettings['currency'] ?? 'USD'),
-                    'product_data' => ['name' => $item['name']],
-                    'unit_amount' => round($item['price'] * 100), // Cents mein convert
-                ],
-                'quantity' => $item['qty'],
-            ];
-        }
-    }
-    
-    $shipping_fee = 0.00;
-    $discount = 0.00;
-    $taxRate = (float) ($appSettings['pos_tax_rate'] ?? 0);
-    $tax = $subtotal * ($taxRate / 100); // Fixed calculation
-    $total = ($subtotal + $shipping_fee + $tax) - $discount;
-    
-    $order_no = 'ORD-' . strtoupper(substr(uniqid(), -6));
-    $status = 'Delivered';
-    $shipping_address = 'Walk-in Counter POS';
-    $customer_id = NULL;
-
-    // 1. Cash Payment ke liye direct save karein
-    if ($payment_method === 'Cash') {
-        $stmt = $conn->prepare("INSERT INTO orders (order_no, customer_id, subtotal, discount, shipping_fee, total, shipping_address, status, payment_method, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        $stmt->bind_param("siddddsss", $order_no, $customer_id, $subtotal, $discount, $shipping_fee, $total, $shipping_address, $status, $payment_method);
-        
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
-            $stmt->close();
-            createAdminNotification($conn, 'New order received (Cash)', 'Order ' . $order_no . ' was completed through Cash.', 'order');
-            $orderItemStmt = $conn->prepare('INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, price, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)');
-            foreach ($cart as $item) {
-                $pid = (int) $item['id'];
-                $pname = (string) $item['name'];
-                $unit_price = (float) $item['price'];
-                $qty = (int) $item['qty'];
-                $line_total = $unit_price * $qty; // Fixed calculation
-                
-                $orderItemStmt->bind_param('iisdidd', $order_id, $pid, $pname, $unit_price, $qty, $unit_price, $line_total);
-                $orderItemStmt->execute();
-                
-                $stockStmt = $conn->prepare('SELECT name, stock FROM products WHERE id = ?');
-                $stockStmt->bind_param('i', $pid);
-                $stockStmt->execute();
-                $stockRow = $stockStmt->get_result()->fetch_assoc();
-                $stockStmt->close();
-                
-                if ($stockRow) {
-                    $previousStock = (int) $stockRow['stock'];
-                    $updateStock = $conn->prepare('UPDATE products SET stock = GREATEST(stock - ?, 0) WHERE id = ?');
-                    $updateStock->bind_param('ii', $qty, $pid);
-                    $updateStock->execute();
-                    $updateStock->close();
-                    
-                    notifyAdminStockTransition($conn, (string) $stockRow['name'], $previousStock, max(0, $previousStock - $qty)); // Fixed calculation
-                }
-            }
-            $orderItemStmt->close();
-
-            echo json_encode(['status' => 'success', 'order_id' => $order_id]);
-            exit();
-        }
-    } 
-    // 2. Online Transfer (Stripe) ke liye session banayein
-    else if ($isGatewayPayment) {
-        if (!class_exists('\Stripe\Stripe')) {
-            echo json_encode(['status' => 'error', 'message' => 'Stripe SDK not found. Run composer require stripe/stripe-php']);
-            exit();
-        }
-        if (empty($stripeSecretKey) || $stripeSecretKey === 'sk_test_YAHAN_APNI_ASAL_KEY_PASTE_KREIN') {
-            http_response_code(503);
-            echo json_encode(['status' => 'error', 'message' => 'Online payment is not configured. Add the Stripe secret key in config.php.']);
-            exit();
-        }
-
-        if ($tax > 0) {
-            $line_items[] = [
-                'price_data' => [
-                    'currency' => strtolower($appSettings['currency'] ?? 'USD'),
-                    'product_data' => ['name' => 'Estimated Tax (' . $taxRate . '%)'],
-                    'unit_amount' => round($tax * 100), // Fixed calculation
-                ],
-                'quantity' => 1,
-            ];
-        }
-
-        $checkoutOptions = [
-            'line_items' => $line_items,
-            'mode' => 'payment',
-            'success_url' => 'http://localhost/ecommerce/sales/pos/success.php?session_id={CHECKOUT_SESSION_ID}',
-            'cancel_url' => 'http://localhost/ecommerce/sales/pos/pos.php',
-            'metadata' => ['payment_method' => $payment_method],
+        $unitAmount = (int) round($item['price'] * 100);
+        $subtotalCents += $unitAmount * $item['qty'];
+        $lineItems[] = [
+            'price_data' => [
+                'currency' => $currency,
+                'product_data' => ['name' => $item['name']],
+                'unit_amount' => $unitAmount,
+            ],
+            'quantity' => $item['qty'],
         ];
-
-        $session = \Stripe\Checkout\Session::create($checkoutOptions);
-        $_SESSION['pending_cart'] = $cart;
-        $_SESSION['pending_payment_method'] = $payment_method;
-
-        echo json_encode(['status' => 'stripe_redirect', 'url' => $session->url]);
-        exit();
+    }
+    $taxRate = (float) ($appSettings['pos_tax_rate'] ?? 0);
+    $taxCents = (int) round($subtotalCents * $taxRate / 100);
+    if ($taxCents > 0) {
+        $lineItems[] = [
+            'price_data' => [
+                'currency' => $currency,
+                'product_data' => ['name' => 'Estimated Tax (' . $taxRate . '%)'],
+                'unit_amount' => $taxCents,
+            ],
+            'quantity' => 1,
+        ];
     }
 
-} catch (Exception $e) {
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-    exit();
+    require_once __DIR__ . '/../../vendor/autoload.php';
+    \Stripe\Stripe::setApiKey($stripeSecretKey);
+    $appUrl = get_env_setting('APP_URL', 'http://localhost');
+    $urlParts = parse_url($appUrl);
+    if (!is_array($urlParts) || empty($urlParts['scheme']) || empty($urlParts['host'])) {
+        throw new RuntimeException('APP_URL must be a valid absolute URL.');
+    }
+    $origin = $urlParts['scheme'] . '://' . $urlParts['host']
+        . (isset($urlParts['port']) ? ':' . $urlParts['port'] : '');
+    $appPath = rtrim($urlParts['path'] ?? '', '/');
+    $projectPath = rtrim(getBaseUrl(), '/');
+    if ($projectPath !== '' && !str_ends_with($appPath, $projectPath)) {
+        $appPath .= $projectPath;
+    }
+    $baseUrl = $origin . $appPath . '/';
+    $session = \Stripe\Checkout\Session::create([
+        'line_items' => $lineItems,
+        'mode' => 'payment',
+        'success_url' => $baseUrl . 'sales/pos/success.php?session_id={CHECKOUT_SESSION_ID}',
+        'cancel_url' => $baseUrl . 'sales/pos/pos.php',
+        'metadata' => ['payment_method' => $paymentMethod],
+    ]);
+
+    $_SESSION['pending_cart'] = $cart;
+    $_SESSION['pending_payment_method'] = $paymentMethod;
+    $_SESSION['pending_tax_rate'] = $taxRate;
+    $_SESSION['pending_currency'] = $currency;
+    $_SESSION['pending_stripe_session_id'] = $session->id;
+    echo json_encode(['status' => 'stripe_redirect', 'url' => $session->url]);
+} catch (InvalidArgumentException $exception) {
+    if (!empty($transactionStarted)) {
+        $conn->rollback();
+    }
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => $exception->getMessage()]);
+} catch (mysqli_sql_exception | RuntimeException $exception) {
+    if (!empty($transactionStarted)) {
+        $conn->rollback();
+    }
+    error_log('POS checkout failed: ' . $exception->getMessage());
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => 'The order could not be completed.']);
+} catch (\Stripe\Exception\ApiErrorException $exception) {
+    error_log('Stripe checkout failed: ' . $exception->getMessage());
+    http_response_code(502);
+    echo json_encode(['status' => 'error', 'message' => 'The payment provider could not start checkout.']);
 }
-?>

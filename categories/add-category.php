@@ -51,7 +51,7 @@ $pageTitle = 'Add Category';
 $parent = ['Categories', 'categories.php'];
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -59,9 +59,10 @@ $parent = ['Categories', 'categories.php'];
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <link href="../assets/css/style.css" rel="stylesheet">
+  <link href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../assets/js/i18n.js" defer></script>
 </head>
-<body>
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <div class="app">
   <?php include "../layouts/sidebar.php"; ?>
   <main class="app-main">

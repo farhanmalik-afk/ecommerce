@@ -10,6 +10,26 @@ $trashType = is_string($requestedTrashType) && in_array($requestedTrashType, ['p
     ? $requestedTrashType
     : 'products';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+    http_response_code(403);
+    exit('Your session expired. Refresh the page and try again.');
+}
+
+$postedTrashType = null;
+if (isset($_POST['user_action']) || isset($_POST['user_bulk_action'])) {
+    $postedTrashType = 'users';
+} elseif (isset($_POST['customer_action']) || isset($_POST['customer_bulk_action'])) {
+    $postedTrashType = 'customers';
+} elseif (in_array($_POST['bulk_action'] ?? '', ['order_restore', 'order_delete'], true)) {
+    $postedTrashType = 'orders';
+} elseif (isset($_POST['product_action']) || in_array($_POST['bulk_action'] ?? '', ['recover', 'delete'], true)) {
+    $postedTrashType = 'products';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $postedTrashType !== null && $postedTrashType !== $trashType) {
+    http_response_code(403);
+    exit('The requested trash action is not available for this section.');
+}
+
 if ($trashType === 'orders') {
     try {
         ensureOrderTrashSchema($conn);
@@ -207,7 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['bulk_action'] ?? '
     $action = $_POST['bulk_action'];
 
     if (empty($orderIds)) {
-        $_SESSION['order_trash_notice'] = ['danger', 'Select at least one order.'];
+        $_SESSION['swal_error'] = 'Select at least one order.';
     } elseif ($action === 'order_restore') {
         try {
             $placeholders = implode(',', array_fill(0, count($orderIds), '?'));
@@ -217,12 +237,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['bulk_action'] ?? '
             $stmt->execute();
             $restoredCount = $stmt->affected_rows;
             $stmt->close();
-            $_SESSION['order_trash_notice'] = $restoredCount > 0
-                ? ['success', $restoredCount . ' order(s) recovered.']
-                : ['warning', 'No trashed orders were found to recover in that selection.'];
+            $_SESSION['swal_success'] = $restoredCount > 0
+                ? $restoredCount . ' order(s) recovered successfully.'
+                : 'No trashed orders were found to recover in that selection.';
         } catch (Throwable $exception) {
             error_log('Unable to restore orders: ' . $exception->getMessage());
-            $_SESSION['order_trash_notice'] = ['danger', 'The selected orders could not be recovered. Check the server log for details.'];
+            $_SESSION['swal_error'] = 'The selected orders could not be recovered.';
         }
     } else {
         $deletedCount = 0;
@@ -261,11 +281,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['bulk_action'] ?? '
             if ($failedCount > 0) {
                 $message .= ' ' . $failedCount . ' order(s) could not be deleted because related records exist.';
             }
-            $_SESSION['order_trash_notice'] = ['success', $message];
+            $_SESSION['swal_success'] = $message;
         } elseif ($failedCount > 0) {
-            $_SESSION['order_trash_notice'] = ['danger', 'Selected orders could not be permanently deleted because related records exist.'];
+            $_SESSION['swal_error'] = 'Selected orders could not be permanently deleted because related records exist.';
         } else {
-            $_SESSION['order_trash_notice'] = ['warning', 'No trashed orders were found in that selection.'];
+            $_SESSION['swal_error'] = 'No trashed orders were found in that selection.';
         }
     }
 
@@ -273,37 +293,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['bulk_action'] ?? '
     exit();
 }
 
-// 1. Handle Recovery (Restore Product: is_deleted = 0)
-if (isset($_GET['recover_id'])) {
-    $rec_id = intval($_GET['recover_id']);
-    $stmt = $conn->prepare("UPDATE products SET is_deleted = 0 WHERE id = ?");
-    $stmt->bind_param("i", $rec_id);
-    if ($stmt->execute()) {
-        $_SESSION['swal_success'] = "Product recovered successfully!";
-    } else {
-        $_SESSION['swal_error'] = "Failed to recover product!";
-    }
-    $stmt->close();
-    header("Location: trash.php?type=products");
-    exit();
-}
-
-// 2. Handle Permanent Deletion (Delete Forever)
-if (isset($_GET['perm_delete'])) {
-    $p_id = intval($_GET['perm_delete']);
-    try {
-        $stmt = $conn->prepare("DELETE FROM products WHERE id = ?");
-        $stmt->bind_param("i", $p_id);
-        if ($stmt->execute()) {
-            $_SESSION['swal_success'] = "Product permanently deleted!";
-        } else {
-            $_SESSION['swal_error'] = "Failed to delete product permanently!";
-        }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['product_action'] ?? '', ['recover', 'delete'], true)) {
+    $productId = filter_var($_POST['product_id'] ?? null, FILTER_VALIDATE_INT);
+    if ($productId === false || $productId < 1) {
+        $_SESSION['swal_error'] = 'Select a valid product.';
+    } elseif ($_POST['product_action'] === 'recover') {
+        $stmt = $conn->prepare("UPDATE products SET is_deleted = 0 WHERE id = ? AND is_deleted = 1");
+        $stmt->bind_param('i', $productId);
+        $stmt->execute();
+        $_SESSION['swal_success'] = $stmt->affected_rows > 0
+            ? 'Product recovered successfully!'
+            : 'No deleted product was found.';
         $stmt->close();
-    } catch (mysqli_sql_exception $e) {
-        $_SESSION['swal_error'] = "Cannot delete this product because related records exist!";
+    } else {
+        try {
+            $stmt = $conn->prepare("DELETE FROM products WHERE id = ? AND is_deleted = 1");
+            $stmt->bind_param('i', $productId);
+            if ($stmt->execute()) {
+                $_SESSION['swal_success'] = $stmt->affected_rows > 0
+                    ? 'Product permanently deleted!'
+                    : 'No deleted product was found.';
+            } else {
+                $_SESSION['swal_error'] = 'Failed to delete product permanently!';
+            }
+            $stmt->close();
+        } catch (mysqli_sql_exception $e) {
+            $_SESSION['swal_error'] = 'Cannot delete this product because related records exist!';
+        }
     }
-    header("Location: trash.php?type=products");
+    header('Location: trash.php?type=products');
     exit();
 }
 
@@ -446,6 +464,9 @@ include __DIR__ . '/../layouts/header.php';
 
         <?php if ($trashType === 'products'): ?>
         <form method="POST" action="trash.php" id="trashBulkForm">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+            <input type="hidden" name="product_action" id="singleProductTrashAction">
+            <input type="hidden" name="product_id" id="singleProductTrashId">
             <input type="hidden" name="bulk_action" id="bulkAction">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex align-items-center gap-2">
@@ -493,7 +514,7 @@ include __DIR__ . '/../layouts/header.php';
                                 }
                             }
                             ?>
-                            <tr>
+                            <tr class="trash-row-item" style="cursor: pointer;">
                                 <td class="py-3 ps-3 trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trash-product-checkbox" name="product_ids[]" value="<?= (int)$row['id'] ?>" aria-label="Select <?= htmlspecialchars($row['name'] ?? 'product', ENT_QUOTES, 'UTF-8') ?>">
                                 </td>
@@ -505,7 +526,7 @@ include __DIR__ . '/../layouts/header.php';
                                 </td>
                                 <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($row['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></span></td>
                                 <td><strong><?= htmlspecialchars(formatAppCurrency($row['price'] ?? 0), ENT_QUOTES, 'UTF-8') ?></strong></td>
-                                <td class="text-end pe-3">
+                                <td class="text-end pe-3" onclick="event.stopPropagation();">
                                     <button type="button" onclick="confirmRecover(<?= $row['id'] ?>)" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" title="Restore Product">
                                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
                                     </button>
@@ -530,6 +551,7 @@ include __DIR__ . '/../layouts/header.php';
 
         <?php elseif ($trashType === 'orders'): ?>
         <form method="POST" action="trash.php?type=orders" id="orderTrashBulkForm">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="bulk_action" id="orderTrashBulkAction">
             <input type="hidden" name="single_order_id" id="singleTrashedOrderId">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
@@ -566,7 +588,7 @@ include __DIR__ . '/../layouts/header.php';
                             <?php while ($order = $ordersResult->fetch_assoc()):
                                 $displayOrderNo = $order['order_no'] ?: '#ORD-' . str_pad((string)$order['id'], 4, '0', STR_PAD_LEFT);
                             ?>
-                                <tr>
+                                <tr class="trash-row-item" style="cursor: pointer;">
                                     <td class="py-3 ps-3 order-trash-select-column d-none">
                                         <input type="checkbox" class="form-check-input trashed-order-checkbox" name="order_ids[]" value="<?php echo (int)$order['id']; ?>" aria-label="Select order <?php echo htmlspecialchars($displayOrderNo, ENT_QUOTES, 'UTF-8'); ?>">
                                     </td>
@@ -575,7 +597,7 @@ include __DIR__ . '/../layouts/header.php';
                                     <td><?php echo htmlspecialchars(formatAppCurrency($order['total']), ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo htmlspecialchars($order['status'] ?? 'Pending', ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo !empty($order['created_at']) ? htmlspecialchars(date('d M Y', strtotime($order['created_at'])), ENT_QUOTES, 'UTF-8') : 'N/A'; ?></td>
-                                    <td class="text-end text-nowrap">
+                                    <td class="text-end text-nowrap" onclick="event.stopPropagation();">
                                         <button type="button" class="btn btn-outline-success btn-sm" onclick="runTrashedOrderAction('order_restore', <?php echo (int)$order['id']; ?>, 'Recover this order?')">
                                             <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
                                         </button>
@@ -600,6 +622,7 @@ include __DIR__ . '/../layouts/header.php';
 
         <?php elseif ($trashType === 'customers'): ?>
         <form method="post" action="trash.php?type=customers" id="customerTrashBulkForm">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="customer_bulk_action" id="customerTrashBulkAction">
             <input type="hidden" name="customer_action" id="singleCustomerTrashAction">
             <input type="hidden" name="customer_id" id="singleCustomerTrashId">
@@ -630,14 +653,14 @@ include __DIR__ . '/../layouts/header.php';
                     <tbody>
                     <?php if ($customersResult && $customersResult->num_rows > 0): ?>
                         <?php while ($customer = $customersResult->fetch_assoc()): ?>
-                            <tr>
+                            <tr class="trash-row-item" style="cursor: pointer;">
                                 <td class="customer-trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trashed-customer-checkbox" name="customer_ids[]" value="<?= (int) $customer['id'] ?>" aria-label="Select <?= htmlspecialchars($customer['name'] ?? 'customer', ENT_QUOTES, 'UTF-8') ?>">
                                 </td>
                                 <td><strong><?= htmlspecialchars($customer['name'] ?? '', ENT_QUOTES, 'UTF-8') ?></strong><br><small class="text-muted"><?= htmlspecialchars($customer['email'] ?? '', ENT_QUOTES, 'UTF-8') ?></small></td>
                                 <td><?= htmlspecialchars($customer['phone'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= !empty($customer['created_at']) ? htmlspecialchars(date('d M Y', strtotime($customer['created_at'])), ENT_QUOTES, 'UTF-8') : 'N/A' ?></td>
-                                <td class="text-end">
+                                <td class="text-end" onclick="event.stopPropagation();">
                                     <button class="btn btn-sm btn-outline-success" type="button" onclick="runSingleCustomerTrashAction('restore', <?= (int) $customer['id'] ?>)"><i class="bi bi-arrow-counterclockwise me-1"></i>Recover</button>
                                     <button class="btn btn-sm btn-outline-danger" type="button" onclick="runSingleCustomerTrashAction('delete', <?= (int) $customer['id'] ?>)"><i class="bi bi-trash me-1"></i>Delete forever</button>
                                 </td>
@@ -654,6 +677,7 @@ include __DIR__ . '/../layouts/header.php';
         <?php elseif ($trashType === 'users'): ?>
         <!-- USERS TRASH TAB VIEW -->
         <form method="post" action="trash.php?type=users" id="userTrashBulkForm">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="user_bulk_action" id="userTrashBulkAction">
             <input type="hidden" name="user_action" id="singleUserTrashAction">
             <input type="hidden" name="user_id" id="singleUserTrashId">
@@ -687,7 +711,7 @@ include __DIR__ . '/../layouts/header.php';
                     <tbody>
                     <?php if ($usersResult && $usersResult->num_rows > 0): ?>
                         <?php while ($user = $usersResult->fetch_assoc()): ?>
-                            <tr>
+                            <tr class="trash-row-item" style="cursor: pointer;">
                                 <td class="py-3 ps-3 user-trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trashed-user-checkbox" name="user_ids[]" value="<?= (int)$user['id'] ?>" aria-label="Select user <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
                                 </td>
@@ -705,7 +729,7 @@ include __DIR__ . '/../layouts/header.php';
                                 </td>
                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                 <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
-                                <td class="text-end pe-3">
+                                <td class="text-end pe-3" onclick="event.stopPropagation();">
                                     <button class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" type="button" onclick="runSingleUserTrashAction('restore', <?= (int)$user['id'] ?>)">
                                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
                                     </button>
@@ -729,16 +753,16 @@ include __DIR__ . '/../layouts/header.php';
                  data-csrf-token="<?= htmlspecialchars($_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32)), ENT_QUOTES, 'UTF-8') ?>">
             <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
                 <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-notification-trash-toggle aria-pressed="false" title="Enable selection">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleNotificationTrashSelection" aria-pressed="false" title="Enable selection">
                         <i class="bi bi-check-square"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-notification-trash-select-all>Select All</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllNotificationTrash">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" data-notification-trash-recover disabled>
+                    <button type="button" class="btn btn-success btn-sm d-none" id="recoverSelectedNotifications" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
                     </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" data-notification-trash-delete disabled>
+                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedNotifications" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Forever
                     </button>
                 </div>
@@ -759,7 +783,7 @@ include __DIR__ . '/../layouts/header.php';
                     <tbody>
                         <?php if ($notificationTrashResult && $notificationTrashResult->num_rows > 0): ?>
                             <?php while ($notif = $notificationTrashResult->fetch_assoc()): ?>
-                                <tr data-notification-trash-row>
+                                <tr class="trash-row-item" style="cursor: pointer;" data-notification-trash-row>
                                     <td class="py-3 ps-3 notification-trash-select-column d-none">
                                         <input type="checkbox" class="form-check-input notification-trash-checkbox" value="<?= (int)$notif['id'] ?>" aria-label="Select notification">
                                     </td>
@@ -767,11 +791,11 @@ include __DIR__ . '/../layouts/header.php';
                                     <td><?= htmlspecialchars($notif['message'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($notif['type'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><?= htmlspecialchars(!empty($notif['created_at']) ? date('d M Y, H:i', strtotime($notif['created_at'])) : 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td class="text-end pe-3">
-                                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" data-notification-trash-single="recover" data-notification-id="<?= (int)$notif['id'] ?>">
+                                    <td class="text-end pe-3" onclick="event.stopPropagation();">
+                                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" onclick="confirmNotificationAction('recover', <?= (int)$notif['id'] ?>)">
                                             <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
                                         </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" data-notification-trash-single="delete" data-notification-id="<?= (int)$notif['id'] ?>">
+                                        <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="confirmNotificationAction('delete', <?= (int)$notif['id'] ?>)">
                                             <i class="bi bi-trash me-1"></i> Delete Forever
                                         </button>
                                     </td>
@@ -793,7 +817,43 @@ include __DIR__ . '/../layouts/header.php';
         <?php endif; ?>
     </div>
 </div>
+
 <script>
+// Display SweetAlert2 Notifications from PHP Session
+document.addEventListener('DOMContentLoaded', function() {
+    <?php if (!empty($_SESSION['swal_success'])): ?>
+        Swal.fire({
+            icon: 'success',
+            title: 'Success!',
+            text: '<?= htmlspecialchars($_SESSION['swal_success'], ENT_QUOTES, 'UTF-8') ?>',
+            timer: 3000,
+            showConfirmButton: false
+        });
+        <?php unset($_SESSION['swal_success']); ?>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['swal_error'])): ?>
+        Swal.fire({
+            icon: 'error',
+            title: 'Error!',
+            text: '<?= htmlspecialchars($_SESSION['swal_error'], ENT_QUOTES, 'UTF-8') ?>'
+        });
+        <?php unset($_SESSION['swal_error']); ?>
+    <?php endif; ?>
+
+    <?php if (!empty($_SESSION['order_trash_notice'])): ?>
+        <?php list($noticeType, $noticeText) = $_SESSION['order_trash_notice']; ?>
+        Swal.fire({
+            icon: '<?= $noticeType === 'success' ? 'success' : ($noticeType === 'danger' ? 'error' : 'warning') ?>',
+            title: 'Notice',
+            text: '<?= htmlspecialchars($noticeText, ENT_QUOTES, 'UTF-8') ?>',
+            timer: 3000,
+            showConfirmButton: false
+        });
+        <?php unset($_SESSION['order_trash_notice']); ?>
+    <?php endif; ?>
+});
+
 // SweetAlert2 Confirmation Helpers for Products, Customers, and Users
 function confirmRecover(id) {
     Swal.fire({
@@ -806,7 +866,9 @@ function confirmRecover(id) {
         confirmButtonText: 'Yes, Recover!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'trash.php?type=products&recover_id=' + id;
+            document.getElementById('singleProductTrashAction').value = 'recover';
+            document.getElementById('singleProductTrashId').value = id;
+            document.getElementById('trashBulkForm').submit();
         }
     });
 }
@@ -822,7 +884,9 @@ function confirmPermDelete(id) {
         confirmButtonText: 'Yes, Delete Forever!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'trash.php?type=products&perm_delete=' + id;
+            document.getElementById('singleProductTrashAction').value = 'delete';
+            document.getElementById('singleProductTrashId').value = id;
+            document.getElementById('trashBulkForm').submit();
         }
     });
 }
@@ -884,8 +948,64 @@ function runSingleUserTrashAction(action, userId) {
     });
 }
 
-// DOM Content Loaded Handler for Selection & Bulk Actions
+// Notification Trash Actions Handler
+function confirmNotificationAction(action, id) {
+    const isRestore = action === 'recover';
+    Swal.fire({
+        title: isRestore ? 'Recover Notification?' : 'Delete Notification Forever?',
+        text: isRestore ? 'Yeh notification recover ho jayega.' : 'Yeh notification hamesha ke liye delete ho jayega!',
+        icon: isRestore ? 'question' : 'warning',
+        showCancelButton: true,
+        confirmButtonColor: isRestore ? '#198754' : '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: isRestore ? 'Yes, Recover!' : 'Yes, Delete Forever!'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const section = document.querySelector('.notification-trash');
+            const actionUrl = section ? section.dataset.actionUrl : '../notifications/actions.php';
+            const csrfToken = section ? section.dataset.csrfToken : '';
+
+            const formData = new FormData();
+            formData.append('action', isRestore ? 'restore_trash' : 'delete_permanent');
+            formData.append('notification_id', id);
+            formData.append('csrf_token', csrfToken);
+
+            fetch(actionUrl, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    Swal.fire('Success!', data.message || 'Action completed successfully.', 'success')
+                    .then(() => location.reload());
+                } else {
+                    Swal.fire('Error!', data.message || 'Operation failed.', 'error');
+                }
+            })
+            .catch(() => {
+                Swal.fire('Error!', 'An unexpected error occurred.', 'error');
+            });
+        }
+    });
+}
+
+// DOM Content Loaded Handler for Selection, Row Click & Bulk Actions
 document.addEventListener('DOMContentLoaded', function () {
+    // General Row Click to Toggle Checkbox Feature
+    document.querySelectorAll('.trash-row-item').forEach(row => {
+        row.addEventListener('click', function(e) {
+            // Agar click directly button ya checkbox par nahi hua tabhi toggle ho
+            if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                const checkbox = row.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change'));
+                }
+            }
+        });
+    });
+
     // ================= PRODUCTS SELECTION LOGIC =================
     const toggleProdBtn = document.getElementById('toggleTrashSelection');
     const selectAllProdBtn = document.getElementById('selectAllTrashProducts');
@@ -1208,6 +1328,141 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (res.isConfirmed) {
                     userTrashBulkAction.value = 'delete';
                     userTrashForm.submit();
+                }
+            });
+        });
+    }
+
+    // ================= NOTIFICATIONS SELECTION & BULK LOGIC =================
+    const toggleNotifBtn = document.getElementById('toggleNotificationTrashSelection');
+    const selectAllNotifBtn = document.getElementById('selectAllNotificationTrash');
+    const recoverNotifBtn = document.getElementById('recoverSelectedNotifications');
+    const deleteNotifBtn = document.getElementById('deleteSelectedNotifications');
+    const notifSelectCols = document.querySelectorAll('.notification-trash-select-column');
+    const notifCheckboxes = document.querySelectorAll('.notification-trash-checkbox');
+
+    if (toggleNotifBtn) {
+        toggleNotifBtn.addEventListener('click', function () {
+            const isHidden = notifSelectCols[0]?.classList.contains('d-none');
+            notifSelectCols.forEach(col => col.classList.toggle('d-none', !isHidden));
+            selectAllNotifBtn?.classList.toggle('d-none', !isHidden);
+            recoverNotifBtn?.classList.toggle('d-none', !isHidden);
+            deleteNotifBtn?.classList.toggle('d-none', !isHidden);
+            toggleNotifBtn.setAttribute('aria-pressed', isHidden ? 'true' : 'false');
+            if (!isHidden) {
+                notifCheckboxes.forEach(cb => cb.checked = false);
+                updateNotifButtons();
+            }
+        });
+    }
+
+    if (selectAllNotifBtn) {
+        selectAllNotifBtn.addEventListener('click', function () {
+            const allChecked = Array.from(notifCheckboxes).every(cb => cb.checked);
+            notifCheckboxes.forEach(cb => cb.checked = !allChecked);
+            selectAllNotifBtn.textContent = allChecked ? 'Select All' : 'Deselect All';
+            updateNotifButtons();
+        });
+    }
+
+    notifCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateNotifButtons);
+    });
+
+    function updateNotifButtons() {
+        const checkedCount = Array.from(notifCheckboxes).filter(cb => cb.checked).length;
+        if (recoverNotifBtn) recoverNotifBtn.disabled = checkedCount === 0;
+        if (deleteNotifBtn) deleteNotifBtn.disabled = checkedCount === 0;
+    }
+
+    // Bulk Recover Notifications Handler via AJAX
+    if (recoverNotifBtn) {
+        recoverNotifBtn.addEventListener('click', function() {
+            const selectedIds = Array.from(notifCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
+            if (selectedIds.length === 0) return;
+
+            Swal.fire({
+                title: 'Recover Selected Notifications?',
+                text: 'Do you want to recover the selected notifications?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#198754',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, Recover!'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    const section = document.querySelector('.notification-trash');
+                    const actionUrl = section ? section.dataset.actionUrl : '../notifications/actions.php';
+                    const csrfToken = section ? section.dataset.csrfToken : '';
+
+                    const formData = new FormData();
+                    formData.append('action', 'bulk_restore_trash');
+                    formData.append('notification_ids', JSON.stringify(selectedIds));
+                    formData.append('csrf_token', csrfToken);
+
+                    fetch(actionUrl, {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire('Success!', data.message || 'Notifications recovered successfully.', 'success')
+                            .then(() => location.reload());
+                        } else {
+                            // Fallback if bulk action endpoint expects individual requests or standard post
+                            Promise.all(selectedIds.map(id => {
+                                const fd = new FormData();
+                                fd.append('action', 'restore_trash');
+                                fd.append('notification_id', id);
+                                fd.append('csrf_token', csrfToken);
+                                return fetch(actionUrl, { method: 'POST', body: fd });
+                            })).then(() => {
+                                Swal.fire('Success!', 'Notifications recovered successfully.', 'success')
+                                .then(() => location.reload());
+                            });
+                        }
+                    })
+                    .catch(() => {
+                        Swal.fire('Error!', 'An unexpected error occurred.', 'error');
+                    });
+                }
+            });
+        });
+    }
+
+    // Bulk Delete Forever Notifications Handler via AJAX
+    if (deleteNotifBtn) {
+        deleteNotifBtn.addEventListener('click', function() {
+            const selectedIds = Array.from(notifCheckboxes).filter(cb => cb.checked).map(cb => parseInt(cb.value));
+            if (selectedIds.length === 0) return;
+
+            Swal.fire({
+                title: 'Delete Selected Notifications Forever?',
+                text: 'These notifications will be deleted permanently!',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Yes, Delete Forever!'
+            }).then((res) => {
+                if (res.isConfirmed) {
+                    const section = document.querySelector('.notification-trash');
+                    const actionUrl = section ? section.dataset.actionUrl : '../notifications/actions.php';
+                    const csrfToken = section ? section.dataset.csrfToken : '';
+
+                    Promise.all(selectedIds.map(id => {
+                        const fd = new FormData();
+                        fd.append('action', 'delete_permanent');
+                        fd.append('notification_id', id);
+                        fd.append('csrf_token', csrfToken);
+                        return fetch(actionUrl, { method: 'POST', body: fd });
+                    })).then(() => {
+                        Swal.fire('Success!', 'Selected notifications permanently deleted.', 'success')
+                        .then(() => location.reload());
+                    }).catch(() => {
+                        Swal.fire('Error!', 'An unexpected error occurred.', 'error');
+                    });
                 }
             });
         });

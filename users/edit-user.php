@@ -15,7 +15,7 @@ if ($id <= 0) {
 $error = '';
 $successScript = '';
 
-$stmt = $conn->prepare("SELECT * FROM admins WHERE id = ?");
+$stmt = $conn->prepare("SELECT a.*, r.name AS role_name FROM admins a JOIN roles r ON r.id = a.role_id WHERE a.id = ?");
 $stmt->bind_param("i", $id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -25,6 +25,9 @@ $stmt->close();
 if (!$user) {
     header("Location: users.php");
     exit();
+}
+if (strtolower(trim((string) $user['role_name'])) === 'super admin' && !isSuperAdmin()) {
+    sendAppError(403, 'Only the Super Admin can manage a Super Admin account.');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -37,13 +40,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $confirm_password = $_POST['confirm_password'] ?? '';
 
-    if (empty($name) || empty($email)) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    } elseif (empty($name) || empty($email)) {
         $error = "Please fill in all required fields.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Invalid email format.";
+    } elseif ($id === getCurrentAdminId() && $role_id !== (int) $user['role_id']) {
+        $error = 'You cannot change your own role.';
+    } elseif ($id === getCurrentAdminId() && $status !== 'Active') {
+        $error = 'You cannot disable your own account.';
+    } elseif (!in_array($status, ['Active', 'Inactive', 'Suspended'], true)) {
+        $error = 'Select a valid account status.';
     } elseif (!empty($password) && $password !== $confirm_password) {
         $error = "Passwords do not match.";
     } else {
+        $roleCheck = $conn->prepare('SELECT name FROM roles WHERE id = ? AND is_active = 1 LIMIT 1');
+        $roleCheck->bind_param('i', $role_id);
+        $roleCheck->execute();
+        $selectedRoleName = $roleCheck->get_result()->fetch_column();
+        $roleCheck->close();
+        if ($selectedRoleName === false) {
+            $error = 'Select an active user role.';
+        } elseif (strtolower(trim((string) $selectedRoleName)) === 'super admin' && !isSuperAdmin()) {
+            $error = 'Only the Super Admin can assign the Super Admin role.';
+        } elseif (
+            strtolower(trim((string) $user['role_name'])) === 'super admin'
+            && ($status !== 'Active' || strtolower(trim((string) $selectedRoleName)) !== 'super admin')
+        ) {
+            $activeCount = $conn->query(
+                "SELECT COUNT(*) AS total FROM admins a JOIN roles r ON r.id = a.role_id
+                 WHERE a.status = 'Active' AND LOWER(r.name) = 'super admin'"
+            );
+            if ($activeCount === false) {
+                error_log('Unable to verify active Super Admin accounts: ' . $conn->error);
+                $error = 'The Super Admin account could not be verified. Please try again.';
+            } elseif ((int) $activeCount->fetch_assoc()['total'] <= 1) {
+                $error = 'The last active Super Admin account cannot be disabled.';
+            }
+        }
+
+        if ($error !== '') {
+            $emailCheck = null;
+        } else {
         $emailCheck = $conn->prepare("SELECT id FROM admins WHERE email = ? AND id != ?");
         $emailCheck->bind_param("si", $email, $id);
         $emailCheck->execute();
@@ -51,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($emailCheck->num_rows > 0) {
             $error = "An account with this email already exists.";
+            $emailCheck->close();
         } else {
             $emailCheck->close();
 
@@ -94,9 +134,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     });
                 ";
             } else {
-                $error = "Database error: " . $updateStmt->error;
+                error_log('Unable to update user: ' . $updateStmt->error);
+                $error = 'The user could not be updated. Please try again.';
             }
             $updateStmt->close();
+        }
         }
     }
 }
@@ -123,10 +165,11 @@ include "../layouts/header.php";
             <div class="card border-0 shadow-sm dashboard-panel">
                 <div class="card-body p-4">
                     <?php if (!empty($error)): ?>
-                        <div class="alert alert-danger py-2"><?php echo $error; ?></div>
+                        <div class="alert alert-danger py-2"><?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?></div>
                     <?php endif; ?>
 
                     <form id="editUserForm" action="" method="POST" enctype="multipart/form-data" autocomplete="off" novalidate>
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Full Name <span class="text-danger">*</span></label>
                             <input type="text" name="name" class="form-control" value="<?php echo htmlspecialchars($user['name']); ?>" required>
@@ -169,11 +212,12 @@ include "../layouts/header.php";
                                 <label class="form-label fw-bold">User Role <span class="text-danger">*</span></label>
                                 <select name="role_id" class="form-select" required>
                                     <?php
-                                    $rolesQuery = $conn->query("SELECT * FROM roles");
+                                    $roleFilter = isSuperAdmin() ? '' : " AND LOWER(name) <> 'super admin'";
+                                    $rolesQuery = $conn->query("SELECT id, name FROM roles WHERE is_active = 1 $roleFilter ORDER BY id");
                                     if ($rolesQuery) {
                                         while ($role = $rolesQuery->fetch_assoc()) {
                                             $selected = ($role['id'] == $user['role_id']) ? 'selected' : '';
-                                            echo "<option value='{$role['id']}' $selected>{$role['name']}</option>";
+                                            echo "<option value='" . (int) $role['id'] . "' $selected>" . htmlspecialchars($role['name'], ENT_QUOTES, 'UTF-8') . "</option>";
                                         }
                                     }
                                     ?>

@@ -11,8 +11,8 @@ $currentPage = basename($scriptPath);
 $currentDirectory = basename(dirname($scriptPath));
 $activeModule = match ($currentPage) {
     'trash.php' => 'trash',
-    'profit-report.php' => 'profit-report',
-    'shift-summary.php' => 'reports',
+    'profit-report.php' => 'profit_tracker',
+    'shift-summary.php' => 'sales_reports',
     'settings.php' => 'settings',
     'users.php', 'add-user.php', 'edit-user.php', 'roles.php', 'activity-logs.php' => 'user_management',
     default => match ($currentDirectory) {
@@ -23,7 +23,7 @@ $activeModule = match ($currentPage) {
         'payments' => 'payments',
         'returns' => 'returns',
         'inventory' => 'inventory',
-        'reports' => 'reports',
+        'reports' => 'sales_reports',
         'pos' => 'pos',
         'users' => 'user_management',
         default => match ($currentPage) {
@@ -34,7 +34,7 @@ $activeModule = match ($currentPage) {
             'payments.php' => 'payments',
             'returns.php' => 'returns',
             'inventory.php', 'stock-adjust.php', 'stock-history.php', 'suppliers.php' => 'inventory',
-            'reports.php' => 'reports', 'profit-report.php' => 'profit-report',
+            'reports.php' => 'sales_reports', 'profit-report.php' => 'profit_tracker',
             'notifications.php' => 'notifications',
             'profile.php' => 'profile',
             'virtual-reality.php' => 'virtual-reality',
@@ -51,13 +51,12 @@ $activeModule = match ($currentPage) {
 
       <div class="d-flex justify-content-between align-items-center mb-4">
         <a href="<?= htmlspecialchars($appBase, ENT_QUOTES, 'UTF-8') ?>/index.php" class="brand">
-          <?php if (!empty($appSettings['logo'])): ?>
-            <img src="<?= htmlspecialchars($appBase, ENT_QUOTES, 'UTF-8') ?>/uploads/<?= rawurlencode($appSettings['logo']) ?>" alt="" style="max-width:42px;max-height:36px;object-fit:contain">
-          <?php else: ?>
-            <i class="bi bi-grid-1x2"></i>
-          <?php endif; ?>
-          <span>Admin Dashboard</span>
-        </a>
+  <?php if (!empty($appSettings['logo'])): ?>
+   <img src="<?= htmlspecialchars(appLogoUrl(), ENT_QUOTES, 'UTF-8') ?>" alt="Store Logo" class="rounded-circle object-fit-cover" width="40" height="40"> <?php else: ?>
+    <i class="bi bi-grid-1x2"></i>
+  <?php endif; ?>
+  <span><?= htmlspecialchars($appSettings['store_name'] ?? 'Admin Dashboard', ENT_QUOTES, 'UTF-8') ?></span>
+</a>
         <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close"></button>
       </div>
 
@@ -73,16 +72,14 @@ $activeModule = match ($currentPage) {
             ['returns', 'Returns', 'bi-arrow-return-left', '/sales/returns/returns.php'],
             ['inventory', 'Inventory', 'bi-boxes', '/inventory/inventory.php'],
             ['notifications', 'Notifications', 'bi-bell', '/notifications.php'],
-            ['reports', 'Sales Reports', 'bi-bar-chart-line', '/sales/reports/reports.php'],
-            ['profit-report', 'Profit Tracker', 'bi-graph-up-arrow', '/sales/reports/profit-report.php'],
+            ['sales_reports', 'Sales Reports', 'bi-bar-chart-line', '/sales/reports/reports.php'],
+            ['profit_tracker', 'Profit Tracker', 'bi-graph-up-arrow', '/sales/reports/profit-report.php'],
             ['user_management', 'User Management', 'bi-shield-lock', '/users/users.php'],
             ['trash', 'Trash Bin', 'bi-trash', '/products/trash.php'],
             ['settings', 'Settings', 'bi-gear', '/settings.php'],
         ];
         foreach ($navigation as [$module, $label, $icon, $path]):
-            if ($module === 'user_management') {
-                // Bypass permission check for testing/visibility
-            } elseif (function_exists('appUserCan') && !appUserCan($module)) {
+            if (function_exists('appUserCan') && !appUserCan($module)) {
                 continue;
             }
             if ($module === 'pos' && ($appSettings['pos_enabled'] ?? '1') !== '1') {

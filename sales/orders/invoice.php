@@ -24,7 +24,7 @@ $items_query->execute();
 $items_result = $items_query->get_result();
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars(($appSettings['language'] ?? 'en') === 'ur' ? 'ur' : 'en', ENT_QUOTES, 'UTF-8') ?>"<?= ($appSettings['language'] ?? 'en') === 'ur' ? ' dir="rtl"' : '' ?>>
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -34,11 +34,10 @@ $items_result = $items_query->get_result();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="../../assets/css/style.css" rel="stylesheet">
     <style>
-        body { background: #f5f0e6; font-family: 'Inter', sans-serif; color: #263449; }
-        .invoice-box { max-width: 800px; margin: 30px auto; background: #fff; padding: 40px; border: 1px solid #e8e1d5; border-radius: 12px; box-shadow: 0 12px 30px rgba(20,36,61,0.08); }
-        .invoice-box h2 { font-family: 'Playfair Display', Georgia, serif; color: #14243d !important; }
-        .invoice-box h4 { color: #14243d !important; }
-        .invoice-box hr { border-color: #c6a15b; opacity: 0.5; }
+        body { background: var(--bg); font-family: 'Inter', sans-serif; color: var(--text); }
+        .invoice-box { max-width: 800px; margin: 30px auto; background: var(--surface); padding: 40px; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+        .invoice-box h2, .invoice-box h4 { font-family: 'Playfair Display', Georgia, serif; color: var(--dark) !important; }
+        .invoice-box hr { border-color: var(--gold); opacity: 0.5; }
         @media print {
             body { background: #fff; }
             .invoice-box { box-shadow: none; border: 0; margin: 0; padding: 20px; width: 100%; max-width: 100%; }
@@ -46,7 +45,7 @@ $items_result = $items_query->get_result();
         }
     </style>
 </head>
-<body class="theme-<?= htmlspecialchars($appSettings['theme'] ?? 'luxury', ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="<?= ($appSettings['theme'] ?? '') === 'dark' ? 'dark' : 'light' ?>">
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="light">
 
 <div class="container my-4">
     <!-- Search / Filter Bar (No-Print) -->

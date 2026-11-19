@@ -1,5 +1,6 @@
 <?php
 session_start();
+define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
@@ -54,22 +55,27 @@ try {
     }
     $updateStmt->close();
 
-    $mailUsername = get_env_setting('SMTP_USERNAME');
-    $mailPassword = get_env_setting('SMTP_PASSWORD');
-    $mailFrom = get_env_setting('SMTP_FROM_EMAIL', $mailUsername);
+    $mailUsername = get_env_setting('SMTP_USERNAME', $appSettings['smtp_username'] ?? '');
+    $mailPassword = get_env_setting('SMTP_PASSWORD', $appSettings['smtp_password'] ?? '');
+    $mailFrom = get_env_setting('SMTP_FROM_EMAIL', $appSettings['smtp_from_email'] ?? $mailUsername);
     if (!$mailUsername || !$mailPassword || !$mailFrom) {
         throw new RuntimeException('SMTP credentials are not configured.');
     }
 
     $mail = new PHPMailer(true);
     $mail->isSMTP();
-    $mail->Host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
+    $mail->Host = get_env_setting('SMTP_HOST', $appSettings['smtp_host'] ?? 'smtp.gmail.com');
     $mail->SMTPAuth = true;
     $mail->Username = $mailUsername;
     $mail->Password = $mailPassword;
-    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->Port = 587;
-    $mail->setFrom($mailFrom, 'E-Commerce Dashboard');
+    $encryption = get_env_setting('SMTP_ENCRYPTION', $appSettings['smtp_encryption'] ?? 'tls');
+    $mail->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+    $mail->SMTPAutoTLS = $encryption !== 'none';
+    if ($encryption === 'none') {
+        $mail->SMTPSecure = '';
+    }
+    $mail->Port = (int) get_env_setting('SMTP_PORT', (string) ($appSettings['smtp_port'] ?? 587));
+    $mail->setFrom($mailFrom, get_env_setting('SMTP_SENDER_NAME', $appSettings['smtp_sender_name'] ?? 'E-Commerce Dashboard'));
     $mail->addAddress($customer['email'], $customer['name']);
     $mail->isHTML(true);
     $mail->Subject = 'Your Updated Login Credentials';

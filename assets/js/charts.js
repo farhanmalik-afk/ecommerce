@@ -1,12 +1,13 @@
 /* =========================================================
    Chart settings shared by all charts
    ========================================================= */
-const GREEN = "#4caf50";
-const PRIMARY_COLOR = "#5e72e4";
+const chartTheme = getComputedStyle(document.body);
+const GREEN = chartTheme.getPropertyValue("--chart-primary").trim() || "#4caf50";
+const PRIMARY_COLOR = chartTheme.getPropertyValue("--chart-secondary").trim() || "#5e72e4";
 
 Chart.defaults.font.family = "Inter, system-ui, sans-serif";
 Chart.defaults.font.size = 11;
-Chart.defaults.color = "#7b809a";
+Chart.defaults.color = chartTheme.getPropertyValue("--text-muted").trim() || "#7b809a";
 
 const baseOptions = {
   responsive: true,
@@ -14,7 +15,13 @@ const baseOptions = {
   plugins: { legend: { display: false } },
   scales: {
     x: { grid: { display: false } },
-    y: { grid: { color: "#eef0f2", drawBorder: false }, border: { display: false } },
+    y: {
+      grid: {
+        color: chartTheme.getPropertyValue("--chart-grid").trim() || "#eef0f2",
+        drawBorder: false,
+      },
+      border: { display: false },
+    },
   },
 };
 

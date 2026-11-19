@@ -2,27 +2,52 @@
 session_start();
 include "../config.php";
 
-// Soft Delete Product Action (Moves to Trash: is_deleted = 1)
-if (isset($_GET['delete_id'])) {
-    $del_id = intval($_GET['delete_id']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
+
+    $productId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if (!$productId || $productId < 1) {
+        http_response_code(400);
+        exit('Invalid product.');
+    }
+
     try {
-        $stmt = $conn->prepare("UPDATE products SET is_deleted = 1 WHERE id = ?");
-        $stmt->bind_param("i", $del_id);
-        if ($stmt->execute()) {
-            $_SESSION['swal_success'] = "Product moved to trash successfully!";
+        if ($_POST['action'] === 'delete') {
+            $stmt = $conn->prepare('UPDATE products SET is_deleted = 1 WHERE id = ? AND is_deleted = 0');
+            $stmt->bind_param('i', $productId);
+            $message = 'Product moved to trash successfully!';
+        } elseif ($_POST['action'] === 'toggle') {
+            $stmt = $conn->prepare("UPDATE products SET status = CASE WHEN status = 'Active' THEN 'Draft' ELSE 'Active' END WHERE id = ? AND is_deleted = 0");
+            $stmt->bind_param('i', $productId);
+            $message = 'Product status updated successfully!';
         } else {
-            $_SESSION['swal_error'] = "Failed to move product to trash!";
+            http_response_code(400);
+            exit('Invalid product action.');
+        }
+
+        if ($stmt->execute() && $stmt->affected_rows > 0) {
+            $_SESSION['swal_success'] = $message;
+        } else {
+            $_SESSION['swal_error'] = 'The product could not be updated.';
         }
         $stmt->close();
     } catch (mysqli_sql_exception $e) {
-        $_SESSION['swal_error'] = "Cannot move this product to trash!";
+        error_log('Unable to update product: ' . $e->getMessage());
+        $_SESSION['swal_error'] = 'The product could not be updated.';
     }
-    header("Location: products.php");
+    header('Location: products.php');
     exit();
 }
 
 // Bulk soft delete selected active products
 if (isset($_POST['bulk_delete'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
     $selected_ids = [];
     $posted_ids = $_POST['product_ids'] ?? [];
     if (is_array($posted_ids)) {
@@ -58,31 +83,6 @@ if (isset($_POST['bulk_delete'])) {
         } catch (mysqli_sql_exception $e) {
             $_SESSION['swal_error'] = "Cannot move the selected products to trash!";
         }
-    }
-    header("Location: products.php");
-    exit();
-}
-
-// Status Toggle Action
-if (isset($_GET['toggle_id'])) {
-    $t_id = intval($_GET['toggle_id']);
-    $check_stmt = $conn->prepare("SELECT status FROM products WHERE id = ? AND is_deleted = 0");
-    $check_stmt->bind_param("i", $t_id);
-    $check_stmt->execute();
-    $res = $check_stmt->get_result();
-    if ($res->num_rows > 0) {
-        $row = $res->fetch_assoc();
-        $new_status = ($row['status'] == 'Active') ? 'Draft' : 'Active';
-        $check_stmt->close();
-
-        $stmt = $conn->prepare("UPDATE products SET status = ? WHERE id = ?");
-        $stmt->bind_param("si", $new_status, $t_id);
-        if ($stmt->execute()) {
-            $_SESSION['swal_success'] = "Product status updated successfully!";
-        } else {
-            $_SESSION['swal_error'] = "Failed to update status!";
-        }
-        $stmt->close();
     }
     header("Location: products.php");
     exit();
@@ -276,6 +276,7 @@ include __DIR__ . '/../layouts/header.php';
   </div>
   <form method="POST" action="products.php" id="bulkDeleteForm">
     <input type="hidden" name="bulk_delete" value="1">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div class="table-responsive product-list-responsive">
       <table class="table table-hover data-table align-middle mb-0" id="productsTable">
         <thead class="table-light">
@@ -560,6 +561,22 @@ bulkDeleteForm.addEventListener('submit', (event) => {
     });
 });
 
+const productActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+function postProductAction(action, id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'products.php';
+    [['action', action], ['id', id], ['csrf_token', productActionCsrf]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function confirmDelete(id) {
     Swal.fire({
         title: 'Move to Trash?',
@@ -571,7 +588,7 @@ function confirmDelete(id) {
         confirmButtonText: 'Yes, move it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'products.php?delete_id=' + id;
+            postProductAction('delete', id);
         }
     });
 }
@@ -588,7 +605,7 @@ function confirmStatusChange(id, currentStatus) {
         confirmButtonText: 'Yes, change it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'products.php?toggle_id=' + id;
+            postProductAction('toggle', id);
         }
     });
 }

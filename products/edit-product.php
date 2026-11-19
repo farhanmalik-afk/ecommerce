@@ -135,7 +135,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->bind_param('ssidssssi', $name, $sku, $categoryId, $priceValue, $stockValue, $status, $description, $image, $id);
             $stmt->execute();
             $stmt->close();
-            notifyAdminStockTransition($conn, $name, $previousStock, $stockValue);
+            notifyAdminStockTransition($conn, $name, $previousStock, $stockValue, (int) $id);
 
             $_SESSION['swal_success'] = 'Product updated successfully!';
             header('Location: products.php');

@@ -1,6 +1,5 @@
 /vendor/
 /.env
 .env.*
-/config.php
 *.log
-/config.local.php
+config.local.phpconfig.local.php

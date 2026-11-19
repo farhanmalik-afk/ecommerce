@@ -113,13 +113,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         try {
             if ($stmt->execute()) {
+                $productId = (int) $stmt->insert_id;
                 createAdminNotification(
                     $conn,
                     'New product added',
                     $name . ' has been added to the product catalog.',
-                    'stock'
+                    'stock',
+                    $productId
                 );
-                notifyAdminStockTransition($conn, $name, 6, (int) $stock);
+                notifyAdminStockTransition($conn, $name, 6, (int) $stock, $productId);
                 $_SESSION['swal_success'] = "Product added successfully!";
                 header("Location: products.php");
                 exit();

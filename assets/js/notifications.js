@@ -95,7 +95,7 @@ document.querySelectorAll(".notification-menu [data-notification-id], .notificat
         }
         window.location.assign(destination);
       } else {
-        item.closest("tr")?.classList.add("notification-focused");
+        window.location.assign(destination);
       }
     } catch (error) {
       console.error("Notification mark-as-read failed:", error);

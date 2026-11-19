@@ -1,6 +1,6 @@
 <?php include __DIR__ . '/config.php'; ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars(($appSettings['language'] ?? 'en') === 'ur' ? 'ur' : 'en', ENT_QUOTES, 'UTF-8') ?>"<?= ($appSettings['language'] ?? 'en') === 'ur' ? ' dir="rtl"' : '' ?>>
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,7 +14,7 @@
 
   <link href="assets/css/style.css" rel="stylesheet">
 </head>
-<body class="theme-<?= htmlspecialchars($appSettings['theme'] ?? 'luxury', ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="<?= ($appSettings['theme'] ?? '') === 'dark' ? 'dark' : 'light' ?>">
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="light">
 
 <div class="app">
 

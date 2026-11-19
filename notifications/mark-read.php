@@ -1,5 +1,6 @@
 <?php
 session_start();
+define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../config.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -15,6 +16,11 @@ $csrfToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 if (!isset($_SESSION['notification_csrf']) || !hash_equals($_SESSION['notification_csrf'], $csrfToken)) {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'message' => 'Invalid request token. Refresh the page and try again.']);
+    exit();
+}
+if (!hasPermission($conn, getCurrentAdminId(), 'notifications', 'edit')) {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'You do not have permission to update notifications.']);
     exit();
 }
 

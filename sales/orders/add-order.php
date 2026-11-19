@@ -67,11 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->bind_param("siddddss", $order_no, $customer_id, $subtotal, $discount, $shipping_fee, $total, $shipping_address, $status);
             if ($stmt->execute()) {
                 $order_added_success = true;
+                $orderId = (int) $stmt->insert_id;
                 createAdminNotification(
                     $conn,
                     'New order received',
                     'Order ' . $order_no . ' has been created.',
-                    'order'
+                    'order',
+                    $orderId
                 );
             } else {
                 $error = "Database Error: " . $stmt->error;

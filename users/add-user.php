@@ -7,9 +7,14 @@ require_once "../includes/rbac.php";
 enforceAccess($conn, 'user_management', 'create');
 
 $error_msg = "";
+$userCsrfToken = csrfToken();
 
 // AJAX Request Handler for Realtime Duplicate Checks (Email)
 if (isset($_POST['type']) && isset($_POST['value'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
     $type = trim($_POST['type']);
     $value = trim($_POST['value']);
     
@@ -43,7 +48,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $strongPasswordPattern = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/';
 
     // PHP Backend Validation
-    if (empty($name)) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        $error_msg = 'Your session expired. Refresh the page and try again.';
+    } elseif (empty($name)) {
         $error_msg = "User full name is required!";
     } elseif (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error_msg = "Please enter a valid email address!";
@@ -53,17 +60,31 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $error_msg = "Passwords do not match!";
     } elseif (empty($role_id)) {
         $error_msg = "Please select a user role!";
+    } elseif (!in_array($status, ['Active', 'Inactive'], true)) {
+        $error_msg = 'Select a valid account status.';
     } else {
-        // Database Duplicate Check for Email
-        $check_email = $conn->prepare("SELECT id FROM admins WHERE email = ?");
-        $check_email->bind_param("s", $email);
-        $check_email->execute();
-        $check_email->store_result();
-
-        if ($check_email->num_rows > 0) {
-            $error_msg = "This email ('" . htmlspecialchars($email) . "') is already registered!";
+        $roleCheck = $conn->prepare('SELECT name FROM roles WHERE id = ? AND is_active = 1 LIMIT 1');
+        $roleCheck->bind_param('i', $role_id);
+        $roleCheck->execute();
+        $selectedRoleName = $roleCheck->get_result()->fetch_column();
+        $roleCheck->close();
+        if ($selectedRoleName === false) {
+            $error_msg = 'Select an active user role.';
+        } elseif (strtolower(trim((string) $selectedRoleName)) === 'super admin' && !isSuperAdmin()) {
+            $error_msg = 'Only the Super Admin can assign the Super Admin role.';
         }
-        $check_email->close();
+
+        // Database Duplicate Check for Email
+        if ($error_msg === '') {
+            $check_email = $conn->prepare("SELECT id FROM admins WHERE email = ?");
+            $check_email->bind_param("s", $email);
+            $check_email->execute();
+            $check_email->store_result();
+            if ($check_email->num_rows > 0) {
+                $error_msg = 'This email address is already registered.';
+            }
+            $check_email->close();
+        }
     }
 
     // Avatar Upload Logic
@@ -117,7 +138,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 exit();
             }
         } catch (mysqli_sql_exception $e) {
-            $error_msg = "Database Error: " . $e->getMessage();
+            error_log('Unable to create user: ' . $e->getMessage());
+            $error_msg = 'The user could not be created. Please try again.';
         }
         $stmt->close();
     }
@@ -140,6 +162,7 @@ include "../layouts/header.php";
 
     <div class="card border-0 shadow-sm p-4 dashboard-panel">
         <form action="" method="POST" enctype="multipart/form-data" id="addUserForm" autocomplete="off" novalidate>
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($userCsrfToken, ENT_QUOTES, 'UTF-8') ?>">
             <div class="row g-3">
                 <!-- Full Name -->
                 <div class="col-md-6">
@@ -192,7 +215,8 @@ include "../layouts/header.php";
                     <select name="role_id" id="userRole" class="form-select" required>
                         <option value="">-- Choose Role --</option>
                         <?php
-                        $roles_result = $conn->query("SELECT id, name FROM roles");
+                        $roleFilter = isSuperAdmin() ? '' : " AND LOWER(name) <> 'super admin'";
+                        $roles_result = $conn->query("SELECT id, name FROM roles WHERE is_active = 1 $roleFilter ORDER BY id");
                         if ($roles_result && $roles_result->num_rows > 0) {
                             while ($role = $roles_result->fetch_assoc()) {
                                 echo "<option value='{$role['id']}'>" . htmlspecialchars($role['name']) . "</option>";
@@ -242,6 +266,7 @@ include "../layouts/header.php";
 <!-- Real-Time Validation & Eye Toggle Script -->
 <script>
 let isEmailUnique = true;
+const userCsrfToken = <?= json_encode($userCsrfToken, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 
 const nameInput = document.getElementById('userName');
 const emailInput = document.getElementById('userEmail');
@@ -391,7 +416,7 @@ emailInput.addEventListener('blur', function() {
         $.ajax({
             url: 'add-user.php',
             type: 'POST',
-            data: { type: 'email', value: emailVal },
+            data: { type: 'email', value: emailVal, csrf_token: userCsrfToken },
             success: function(response) {
                 isEmailUnique = (response.trim() !== "exists");
                 validateEmail();
@@ -430,7 +455,7 @@ document.getElementById('addUserForm').addEventListener('submit', function(e) {
     $.ajax({
         url: 'add-user.php',
         type: 'POST',
-        data: { type: 'email', value: emailVal },
+        data: { type: 'email', value: emailVal, csrf_token: userCsrfToken },
         success: function(emailResponse) {
             if (emailResponse.trim() === "exists") {
                 emailInput.classList.add('is-invalid');

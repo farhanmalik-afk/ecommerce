@@ -37,7 +37,7 @@ $countStmt->close();
 $totalPages = max(1, (int) ceil($totalNotifications / $perPage));
 $page = min($page, $totalPages);
 $offset = ($page - 1) * $perPage;
-$listStmt = $conn->prepare("SELECT id, title, message, type, is_read, created_at FROM notifications WHERE $whereSql ORDER BY (id = ?) DESC, created_at DESC, id DESC LIMIT ? OFFSET ?");
+$listStmt = $conn->prepare("SELECT id, title, message, type, target_id, is_read, created_at FROM notifications WHERE $whereSql ORDER BY (id = ?) DESC, created_at DESC, id DESC LIMIT ? OFFSET ?");
 $listParams = array_merge($queryParams, [$focusId, $perPage, $offset]);
 $listStmt->bind_param(str_repeat('s', count($queryParams)) . 'iii', ...$listParams);
 $listStmt->execute();
@@ -99,14 +99,18 @@ if ($typeFilter !== '') {
       </thead>
       <tbody>
       <?php foreach ($historyNotifications as $notification): ?>
-        <?php $notificationType = $notification['type']; ?>
+        <?php
+        $notificationType = $notification['type'];
+        $notificationHref = adminNotificationTargetHref($notification, $appBase)
+            ?? $appBase . '/notifications.php?focus=' . (int) $notification['id'];
+        ?>
         <tr id="notification-<?= (int) $notification['id'] ?>" data-notification-row<?= $focusId === (int) $notification['id'] ? ' class="notification-focused"' : '' ?>>
           <td class="notification-select-column d-none">
             <input class="form-check-input notification-checkbox" type="checkbox" value="<?= (int) $notification['id'] ?>" aria-label="Select notification">
           </td>
           <td>
             <a class="notification-history-link<?= (int) $notification['is_read'] === 0 ? ' is-unread' : '' ?>"
-               href="#notification-<?= (int) $notification['id'] ?>"
+               href="<?= htmlspecialchars($notificationHref, ENT_QUOTES, 'UTF-8') ?>"
                data-notification-id="<?= (int) $notification['id'] ?>">
               <strong><?= htmlspecialchars($notification['title'], ENT_QUOTES, 'UTF-8') ?></strong>
             </a>

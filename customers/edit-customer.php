@@ -131,7 +131,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $parent = ['Customers', 'customers.php'];
     ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -144,9 +144,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   
   <!-- SweetAlert2 CSS & JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <link href="../assets/css/style.css" rel="stylesheet">
+  <link href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../assets/js/i18n.js" defer></script>
 </head>
-<body>
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 
 <div class="app">
 

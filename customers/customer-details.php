@@ -25,9 +25,13 @@ if (isset($_GET['id'])) {
 }
 
 // Status Toggle Action Handle Karna (Block/Unblock)
-if (isset($_GET['toggle_status'])) {
-    $t_id = intval($_GET['toggle_id']);
-    
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_status'])) {
+    $t_id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null) || $t_id !== $customer_id) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
+
     $stmt = $conn->prepare("UPDATE customers SET status = CASE WHEN status = 'Active' THEN 'Inactive' ELSE 'Active' END WHERE id = ?");
     $stmt->bind_param("i", $t_id);
     
@@ -127,7 +131,7 @@ function confirmSendEmail(id) {
                     icon: 'success',
                     title: 'Email Sent',
                     text: data.message,
-                    confirmButtonColor: '#14243d'
+                    confirmButtonColor: getComputedStyle(document.body).getPropertyValue('--button-primary').trim() || getComputedStyle(document.body).getPropertyValue('--dark').trim()
                 });
             })
             .catch((error) => {
@@ -198,6 +202,22 @@ function confirmSendEmail(id) {
     </section>
 
 <script>
+const customerDetailsCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+function postCustomerStatus(id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'customer-details.php?id=' + encodeURIComponent(id);
+    [['toggle_status', '1'], ['id', id], ['csrf_token', customerDetailsCsrf]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function confirmStatusChange(id, currentStatus) {
     let targetStatus = (currentStatus === 'Active') ? 'Inactive' : 'Active';
     let messageText = 'Are you sure you want to make this customer ' + targetStatus + '?';
@@ -213,7 +233,7 @@ function confirmStatusChange(id, currentStatus) {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'customer-details.php?id=' + id + '&toggle_status=1&toggle_id=' + id;
+            postCustomerStatus(id);
         }
     });
 }

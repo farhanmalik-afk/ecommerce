@@ -6,24 +6,51 @@ require_once "../includes/rbac.php";
 
 enforceAccess($conn, 'user_management', 'view');
 
-if (isset($_GET['action']) && isset($_GET['id'])) {
-    $targetId = intval($_GET['id']);
-    $checkRole = $conn->query("SELECT role_id FROM admins WHERE id = $targetId")->fetch_assoc();
-    if ($checkRole && $checkRole['role_id'] == 1 && getCurrentAdminId() != 1) {
-        $_SESSION['error'] = "You cannot modify a Super Admin account!";
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+    $targetId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null) || !$targetId || $targetId < 1) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
+
+    $roleStmt = $conn->prepare(
+        'SELECT a.role_id, a.status, r.name AS role_name
+         FROM admins a JOIN roles r ON r.id = a.role_id WHERE a.id = ?'
+    );
+    $roleStmt->bind_param('i', $targetId);
+    $roleStmt->execute();
+    $target = $roleStmt->get_result()->fetch_assoc();
+    $roleStmt->close();
+    if (!$target) {
+        $_SESSION['error'] = 'The selected user was not found.';
+    } elseif (strtolower(trim((string) $target['role_name'])) === 'super admin') {
+        $_SESSION['error'] = 'Super Admin accounts are protected from user-list actions.';
     } else {
-        if ($_GET['action'] == 'toggle') {
-            $conn->query("UPDATE admins SET status = IF(status='Active', 'Inactive', 'Active') WHERE id = $targetId");
-            logActivity($conn, getCurrentAdminId(), "Toggled status for user ID: $targetId", "User Management");
-            $_SESSION['success'] = "User status updated successfully!";
-        } elseif ($_GET['action'] == 'delete') {
+        if ($_POST['action'] === 'toggle') {
+            if ($targetId === getCurrentAdminId()) {
+                $_SESSION['error'] = 'You cannot disable your own account.';
+            } else {
+                $stmt = $conn->prepare("UPDATE admins SET status = IF(status = 'Active', 'Inactive', 'Active') WHERE id = ?");
+                $stmt->bind_param('i', $targetId);
+                $stmt->execute();
+                $stmt->close();
+                logActivity($conn, getCurrentAdminId(), "Toggled status for user ID: $targetId", "User Management");
+                $_SESSION['success'] = "User status updated successfully!";
+            }
+        } elseif ($_POST['action'] === 'delete') {
             if ($targetId === getCurrentAdminId()) {
                 $_SESSION['error'] = "You cannot delete your own active account.";
             } else {
-                $conn->query("UPDATE admins SET status = 'Trash' WHERE id = $targetId");
+                $stmt = $conn->prepare("UPDATE admins SET status = 'Trash' WHERE id = ?");
+                $stmt->bind_param('i', $targetId);
+                $stmt->execute();
+                $stmt->close();
                 logActivity($conn, getCurrentAdminId(), "Moved user ID $targetId to Trash Bin", "User Management");
                 $_SESSION['success'] = "User moved to Trash successfully!";
             }
+        } else {
+            http_response_code(400);
+            exit('Invalid user action.');
         }
     }
     header("Location: users.php");
@@ -187,10 +214,14 @@ include "../layouts/header.php";
                                 <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
                                 <td><span class="badge <?php echo $badgeClass; ?>"><?php echo htmlspecialchars($user['status']); ?></span></td>
                                 <td class="text-end pe-3">
-                                    <button type="button" onclick="confirmUserStatusChange(<?php echo (int)$user['id']; ?>, '<?php echo htmlspecialchars($user['status'], ENT_QUOTES); ?>')" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></button>
-                                    <a href="edit-user.php?id=<?php echo $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a>
-                                    <?php if ($user['id'] != getCurrentAdminId()): ?>
-                                        <a href="users.php?action=delete&id=<?php echo $user['id']; ?>" class="btn btn-sm btn-outline-danger py-0 px-2 delete-btn" data-name="<?php echo htmlspecialchars($user['name']); ?>" title="Move to Trash"><i class="bi bi-trash"></i></a>
+                                    <?php if (strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
+                                        <?php if ((int) $user['id'] !== getCurrentAdminId()): ?>
+                                            <button type="button" onclick="confirmUserStatusChange(<?php echo (int)$user['id']; ?>, '<?php echo htmlspecialchars($user['status'], ENT_QUOTES); ?>')" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></button>
+                                        <?php endif; ?>
+                                        <a href="edit-user.php?id=<?php echo (int) $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a>
+                                    <?php endif; ?>
+                                    <?php if ($user['id'] != getCurrentAdminId() && strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="confirmUserDelete(<?php echo (int) $user['id']; ?>, this.dataset.name)" data-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>" title="Move to Trash"><i class="bi bi-trash"></i></button>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -237,6 +268,22 @@ include "../layouts/header.php";
 <!-- SweetAlert2 CDN -->
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+const userActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+function submitUserAction(action, id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'users.php';
+    [['action', action], ['id', id], ['csrf_token', userActionCsrf]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const toggleUserSelectionButton = document.getElementById('toggleUserSelection');
     const selectAllUsersButton = document.getElementById('selectAllUsers');
@@ -281,28 +328,23 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    document.querySelectorAll('.delete-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            const deleteUrl = this.getAttribute('href');
-            const userName = this.getAttribute('data-name');
-
-            Swal.fire({
-                title: 'Move to Trash?',
-                text: `Are you sure you want to move user "${userName}" to the trash bin?`,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#dc3545',
-                cancelButtonColor: '#6c757d',
-                confirmButtonText: 'Yes, move to trash!'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    window.location.href = deleteUrl;
-                }
-            });
-        });
-    });
 });
+
+function confirmUserDelete(id, userName) {
+    Swal.fire({
+        title: 'Move to Trash?',
+        text: `Are you sure you want to move user "${userName}" to the trash bin?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Yes, move to trash!'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            submitUserAction('delete', id);
+        }
+    });
+}
 
 function confirmUserStatusChange(id, currentStatus) {
     let targetStatus = (currentStatus === 'Active') ? 'Inactive' : 'Active';
@@ -316,7 +358,7 @@ function confirmUserStatusChange(id, currentStatus) {
         confirmButtonText: 'Yes, change it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'users.php?action=toggle&id=' + id;
+            submitUserAction('toggle', id);
         }
     });
 }

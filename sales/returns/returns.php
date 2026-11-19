@@ -46,7 +46,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $conn,
                 'Return request submitted',
                 'Return ' . $returnNo . ' was requested for order ' . $order['order_no'] . '.',
-                'return'
+                'return',
+                $orderId
             );
             $returnSuccess = 'Return request ' . $returnNo . ' was submitted.';
             $selectedOrderId = '';

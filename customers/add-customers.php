@@ -101,11 +101,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->bind_param("ssssssssss", $name, $email, $phone, $address, $city, $country, $status, $profile_image, $hashed_password, $customer_group);
             
             if ($stmt->execute()) {
+                $customerId = (int) $stmt->insert_id;
                 createAdminNotification(
                     $conn,
                     'New customer registered',
                     $name . ' has registered as a customer.',
-                    'customer'
+                    'customer',
+                    $customerId
                 );
                 
                 $mail = new PHPMailer(true);
@@ -175,7 +177,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $parent = ['Customers', 'customers.php'];
     ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -186,9 +188,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <link href="../assets/css/style.css" rel="stylesheet">
+  <link href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../assets/js/i18n.js" defer></script>
 </head>
-<body>
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 
 <div class="app">
   <?php include "../layouts/sidebar.php"; ?>

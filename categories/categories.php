@@ -2,34 +2,39 @@
 session_start();
 include "../config.php";
 
-// Delete Category
-if (isset($_GET['delete_id'])) {
-    $del_id = intval($_GET['delete_id']);
-    try {
-        $stmt = $conn->prepare("DELETE FROM categories WHERE id = ?");
-        $stmt->bind_param("i", $del_id);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
+
+    $categoryId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if (!$categoryId || $categoryId < 1) {
+        http_response_code(400);
+        exit('Invalid category.');
+    }
+
+    if ($_POST['action'] === 'delete') {
+        try {
+            $stmt = $conn->prepare("DELETE FROM categories WHERE id = ?");
+            $stmt->bind_param("i", $categoryId);
+            if ($stmt->execute()) {
+                $_SESSION['swal_success'] = "Category deleted successfully!";
+            }
+            $stmt->close();
+        } catch (mysqli_sql_exception $e) {
+            $_SESSION['swal_error'] = "Cannot delete this category because products are linked to it!";
+        }
+    } elseif ($_POST['action'] === 'toggle') {
+        $stmt = $conn->prepare("UPDATE categories SET status = CASE WHEN status = 'Active' THEN 'Inactive' ELSE 'Active' END WHERE id = ?");
+        $stmt->bind_param("i", $categoryId);
         if ($stmt->execute()) {
-            $_SESSION['swal_success'] = "Category deleted successfully!";
+            $_SESSION['swal_success'] = "Category status updated successfully!";
+        } else {
+            $_SESSION['swal_error'] = "Failed to update status!";
         }
         $stmt->close();
-    } catch (mysqli_sql_exception $e) {
-        $_SESSION['swal_error'] = "Cannot delete this category because products are linked to it!";
     }
-    header("Location: categories.php");
-    exit();
-}
-
-// Status Toggle
-if (isset($_GET['toggle_id'])) {
-    $t_id = intval($_GET['toggle_id']);
-    $stmt = $conn->prepare("UPDATE categories SET status = CASE WHEN status = 'Active' THEN 'Inactive' ELSE 'Active' END WHERE id = ?");
-    $stmt->bind_param("i", $t_id);
-    if ($stmt->execute()) {
-        $_SESSION['swal_success'] = "Category status updated successfully!";
-    } else {
-        $_SESSION['swal_error'] = "Failed to update status!";
-    }
-    $stmt->close();
     header("Location: categories.php");
     exit();
 }
@@ -38,7 +43,7 @@ $search = trim($_GET['search'] ?? '');
 $pageTitle = 'Categories';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -48,9 +53,10 @@ $pageTitle = 'Categories';
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <link href="../assets/css/style.css" rel="stylesheet">
+  <link href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../assets/js/i18n.js" defer></script>
 </head>
-<body>
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 
 <div class="app">
   <?php include "../layouts/sidebar.php"; ?>
@@ -156,6 +162,22 @@ $pageTitle = 'Categories';
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+const categoryActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+function postCategoryAction(action, id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'categories.php';
+    [['action', action], ['id', id], ['csrf_token', categoryActionCsrf]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function confirmDelete(id) {
     Swal.fire({
         title: 'Are you sure?',
@@ -167,7 +189,7 @@ function confirmDelete(id) {
         confirmButtonText: 'Yes, delete it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'categories.php?delete_id=' + id;
+            postCategoryAction('delete', id);
         }
     });
 }
@@ -184,7 +206,7 @@ function confirmStatusChange(id, currentStatus) {
         confirmButtonText: 'Yes, change it!'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'categories.php?toggle_id=' + id;
+            postCategoryAction('toggle', id);
         }
     });
 }

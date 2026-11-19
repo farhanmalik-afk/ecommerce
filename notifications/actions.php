@@ -1,5 +1,6 @@
 <?php
 session_start();
+define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../config.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -30,6 +31,9 @@ $action = $input['action'] ?? '';
 $allowedActions = ['mark_read', 'trash', 'recover', 'delete'];
 if (!is_string($action) || !in_array($action, $allowedActions, true)) {
     respondWithError(422, 'Select a valid notification action.');
+}
+if (!hasPermission($conn, getCurrentAdminId(), 'notifications', $action === 'delete' ? 'delete' : 'edit')) {
+    respondWithError(403, 'You do not have permission to perform this notification action.');
 }
 
 $postedIds = $input['ids'] ?? [];

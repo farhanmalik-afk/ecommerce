@@ -195,28 +195,28 @@ try {
     require __DIR__ . '/semantic-search.php';
 
     $pages = [
-        ['key' => 'dashboard', 'name' => 'Dashboard', 'detail' => 'Main overview', 'path' => '/index.php', 'icon' => 'bi-speedometer2', 'intents' => ['dashboard']],
-        ['key' => 'products', 'name' => 'Products Management', 'detail' => 'Browse and manage the product catalog', 'path' => '/products/products.php', 'icon' => 'bi-box-seam', 'intents' => ['product']],
-        ['key' => 'all-products', 'name' => 'All Products', 'detail' => 'View all products in the catalog', 'path' => '/products/products.php', 'icon' => 'bi-grid', 'intents' => ['product']],
-        ['key' => 'add-product', 'name' => 'Add New Product', 'detail' => 'Create a product in the catalog', 'path' => '/products/add-product.php', 'icon' => 'bi-plus-square', 'intents' => ['product']],
-        ['key' => 'product-inventory', 'name' => 'Product Inventory', 'detail' => 'Review product stock levels', 'path' => '/inventory/inventory.php', 'icon' => 'bi-boxes', 'intents' => ['product', 'inventory']],
-        ['key' => 'low-stock', 'name' => 'Low Stock Products', 'detail' => 'Products with five or fewer units', 'path' => '/inventory/inventory.php?stock_filter=low_stock', 'icon' => 'bi-exclamation-triangle', 'intents' => ['low_stock']],
-        ['key' => 'inventory', 'name' => 'Inventory Management', 'detail' => 'Manage stock levels and inventory', 'path' => '/inventory/inventory.php', 'icon' => 'bi-boxes', 'intents' => ['inventory', 'low_stock']],
-        ['key' => 'stock-alerts', 'name' => 'Stock Alerts', 'detail' => 'Review low and out-of-stock products', 'path' => '/sales/reports/reports.php', 'icon' => 'bi-bell', 'intents' => ['low_stock']],
-        ['key' => 'customers', 'name' => 'Customers Management', 'detail' => 'Browse the customer directory', 'path' => '/customers/customers.php', 'icon' => 'bi-people', 'intents' => ['customer']],
-        ['key' => 'all-customers', 'name' => 'All Customers', 'detail' => 'View all registered customers', 'path' => '/customers/customers.php', 'icon' => 'bi-person-lines-fill', 'intents' => ['customer']],
-        ['key' => 'add-customer', 'name' => 'Add New Customer', 'detail' => 'Create a customer record', 'path' => '/customers/add-customers.php', 'icon' => 'bi-person-plus', 'intents' => ['customer']],
-        ['key' => 'categories', 'name' => 'Categories', 'detail' => 'Manage product categories', 'path' => '/categories/categories.php', 'icon' => 'bi-tags', 'intents' => ['product']],
-        ['key' => 'orders', 'name' => 'Orders Management', 'detail' => 'Browse and manage customer orders', 'path' => '/sales/orders/orders.php', 'icon' => 'bi-bag-check', 'intents' => ['order']],
-        ['key' => 'pending-orders', 'name' => 'Pending Orders', 'detail' => 'Orders waiting to be processed', 'path' => '/sales/orders/orders.php?status=Pending', 'icon' => 'bi-hourglass-split', 'intents' => ['pending']],
-        ['key' => 'processing-orders', 'name' => 'Processing Orders', 'detail' => 'Orders currently being fulfilled', 'path' => '/sales/orders/orders.php?status=Processing', 'icon' => 'bi-arrow-repeat', 'intents' => ['pending']],
-        ['key' => 'delivered-orders', 'name' => 'Delivered Orders', 'detail' => 'Orders successfully delivered', 'path' => '/sales/orders/orders.php?status=Delivered', 'icon' => 'bi-check-circle', 'intents' => ['delivered']],
-        ['key' => 'recent-orders', 'name' => 'Recent Orders', 'detail' => 'View the latest customer purchases', 'path' => '/sales/orders/orders.php', 'icon' => 'bi-clock-history', 'intents' => ['recent', 'order']],
-        ['key' => 'payments', 'name' => 'Payments', 'detail' => 'Review payment records', 'path' => '/sales/payments/payments.php', 'icon' => 'bi-credit-card', 'intents' => ['payment']],
-        ['key' => 'returns', 'name' => 'Returns', 'detail' => 'Manage returns and refunds', 'path' => '/sales/returns/returns.php', 'icon' => 'bi-arrow-return-left', 'intents' => ['returns']],
-        ['key' => 'notifications', 'name' => 'Notifications', 'detail' => 'View store notifications and alerts', 'path' => '/notifications.php', 'icon' => 'bi-bell', 'intents' => ['notifications']],
-        ['key' => 'sales-reports', 'name' => 'Sales Reports', 'detail' => 'Analyze sales and revenue', 'path' => '/sales/reports/reports.php', 'icon' => 'bi-bar-chart-line', 'intents' => ['sales', 'recent']],
-        ['key' => 'profit-tracker', 'name' => 'Profit Tracker', 'detail' => 'Review profit and margins', 'path' => '/sales/reports/profit-report.php', 'icon' => 'bi-graph-up-arrow', 'intents' => ['sales']],
+        ['key' => 'dashboard', 'module' => 'dashboard', 'action' => 'view', 'name' => 'Dashboard', 'detail' => 'Main overview', 'path' => '/index.php', 'icon' => 'bi-speedometer2', 'intents' => ['dashboard']],
+        ['key' => 'products', 'module' => 'products', 'action' => 'view', 'name' => 'Products Management', 'detail' => 'Browse and manage the product catalog', 'path' => '/products/products.php', 'icon' => 'bi-box-seam', 'intents' => ['product']],
+        ['key' => 'all-products', 'module' => 'products', 'action' => 'view', 'name' => 'All Products', 'detail' => 'View all products in the catalog', 'path' => '/products/products.php', 'icon' => 'bi-grid', 'intents' => ['product']],
+        ['key' => 'add-product', 'module' => 'products', 'action' => 'create', 'name' => 'Add New Product', 'detail' => 'Create a product in the catalog', 'path' => '/products/add-product.php', 'icon' => 'bi-plus-square', 'intents' => ['product']],
+        ['key' => 'product-inventory', 'module' => 'inventory', 'action' => 'view', 'name' => 'Product Inventory', 'detail' => 'Review product stock levels', 'path' => '/inventory/inventory.php', 'icon' => 'bi-boxes', 'intents' => ['product', 'inventory']],
+        ['key' => 'low-stock', 'module' => 'inventory', 'action' => 'view', 'name' => 'Low Stock Products', 'detail' => 'Products with five or fewer units', 'path' => '/inventory/inventory.php?stock_filter=low_stock', 'icon' => 'bi-exclamation-triangle', 'intents' => ['low_stock']],
+        ['key' => 'inventory', 'module' => 'inventory', 'action' => 'view', 'name' => 'Inventory Management', 'detail' => 'Manage stock levels and inventory', 'path' => '/inventory/inventory.php', 'icon' => 'bi-boxes', 'intents' => ['inventory', 'low_stock']],
+        ['key' => 'stock-alerts', 'module' => 'sales_reports', 'action' => 'view', 'name' => 'Stock Alerts', 'detail' => 'Review low and out-of-stock products', 'path' => '/sales/reports/reports.php', 'icon' => 'bi-bell', 'intents' => ['low_stock']],
+        ['key' => 'customers', 'module' => 'customers', 'action' => 'view', 'name' => 'Customers Management', 'detail' => 'Browse the customer directory', 'path' => '/customers/customers.php', 'icon' => 'bi-people', 'intents' => ['customer']],
+        ['key' => 'all-customers', 'module' => 'customers', 'action' => 'view', 'name' => 'All Customers', 'detail' => 'View all registered customers', 'path' => '/customers/customers.php', 'icon' => 'bi-person-lines-fill', 'intents' => ['customer']],
+        ['key' => 'add-customer', 'module' => 'customers', 'action' => 'create', 'name' => 'Add New Customer', 'detail' => 'Create a customer record', 'path' => '/customers/add-customers.php', 'icon' => 'bi-person-plus', 'intents' => ['customer']],
+        ['key' => 'categories', 'module' => 'categories', 'action' => 'view', 'name' => 'Categories', 'detail' => 'Manage product categories', 'path' => '/categories/categories.php', 'icon' => 'bi-tags', 'intents' => ['product']],
+        ['key' => 'orders', 'module' => 'orders', 'action' => 'view', 'name' => 'Orders Management', 'detail' => 'Browse and manage customer orders', 'path' => '/sales/orders/orders.php', 'icon' => 'bi-bag-check', 'intents' => ['order']],
+        ['key' => 'pending-orders', 'module' => 'orders', 'action' => 'view', 'name' => 'Pending Orders', 'detail' => 'Orders waiting to be processed', 'path' => '/sales/orders/orders.php?status=Pending', 'icon' => 'bi-hourglass-split', 'intents' => ['pending']],
+        ['key' => 'processing-orders', 'module' => 'orders', 'action' => 'view', 'name' => 'Processing Orders', 'detail' => 'Orders currently being fulfilled', 'path' => '/sales/orders/orders.php?status=Processing', 'icon' => 'bi-arrow-repeat', 'intents' => ['pending']],
+        ['key' => 'delivered-orders', 'module' => 'orders', 'action' => 'view', 'name' => 'Delivered Orders', 'detail' => 'Orders successfully delivered', 'path' => '/sales/orders/orders.php?status=Delivered', 'icon' => 'bi-check-circle', 'intents' => ['delivered']],
+        ['key' => 'recent-orders', 'module' => 'orders', 'action' => 'view', 'name' => 'Recent Orders', 'detail' => 'View the latest customer purchases', 'path' => '/sales/orders/orders.php', 'icon' => 'bi-clock-history', 'intents' => ['recent', 'order']],
+        ['key' => 'payments', 'module' => 'payments', 'action' => 'view', 'name' => 'Payments', 'detail' => 'Review payment records', 'path' => '/sales/payments/payments.php', 'icon' => 'bi-credit-card', 'intents' => ['payment']],
+        ['key' => 'returns', 'module' => 'returns', 'action' => 'view', 'name' => 'Returns', 'detail' => 'Manage returns and refunds', 'path' => '/sales/returns/returns.php', 'icon' => 'bi-arrow-return-left', 'intents' => ['returns']],
+        ['key' => 'notifications', 'module' => 'notifications', 'action' => 'view', 'name' => 'Notifications', 'detail' => 'View store notifications and alerts', 'path' => '/notifications.php', 'icon' => 'bi-bell', 'intents' => ['notifications']],
+        ['key' => 'sales-reports', 'module' => 'sales_reports', 'action' => 'view', 'name' => 'Sales Reports', 'detail' => 'Analyze sales and revenue', 'path' => '/sales/reports/reports.php', 'icon' => 'bi-bar-chart-line', 'intents' => ['sales', 'recent']],
+        ['key' => 'profit-tracker', 'module' => 'profit_tracker', 'action' => 'view', 'name' => 'Profit Tracker', 'detail' => 'Review profit and margins', 'path' => '/sales/reports/profit-report.php', 'icon' => 'bi-graph-up-arrow', 'intents' => ['sales']],
     ];
 
     $normalizedQuery = normalizeGlobalSearchText($query);
@@ -260,6 +260,9 @@ try {
     }
 
     foreach ($pages as $page) {
+        if (!hasPermission($conn, getCurrentAdminId(), $page['module'], $page['action'])) {
+            continue;
+        }
         $matchedIntents = array_values(array_intersect($intents, $page['intents']));
         $pageTerms = array_merge(
             explode(' ', normalizeGlobalSearchText($page['name'])),
@@ -338,6 +341,7 @@ try {
     ));
     $recordTerms = array_slice($recordTerms, 0, 5);
     if ($recordTerms !== []) {
+        if (appUserCan('products')) {
         $productClauses = [];
         $productParams = [];
         foreach ($recordTerms as $term) {
@@ -366,7 +370,9 @@ try {
             ], 1.8, $recordTerms);
         }
         $statement->close();
+        }
 
+        if (appUserCan('customers')) {
         $customerClauses = [];
         $customerParams = [];
         foreach ($recordTerms as $term) {
@@ -391,7 +397,9 @@ try {
             ], 1.8, $recordTerms);
         }
         $statement->close();
+        }
 
+        if (appUserCan('orders')) {
         $orderClauses = [];
         $orderParams = [];
         foreach ($recordTerms as $term) {
@@ -417,32 +425,35 @@ try {
             ], 1.8, $recordTerms);
         }
         $statement->close();
-    }
-
-    $categoryQuery = $conn->prepare(
-        'SELECT id, name FROM categories ORDER BY name LIMIT 100'
-    );
-    $categoryQuery->execute();
-    $categoryRows = $categoryQuery->get_result();
-    while ($row = $categoryRows->fetch_assoc()) {
-        $categoryName = (string)$row['name'];
-        $normalizedName = normalizeGlobalSearchText($categoryName);
-        $categoryTokens = getGlobalSearchTokens($categoryName);
-        $matchedTerms = array_values(array_intersect($tokens, $categoryTokens));
-        if ($matchedTerms === [] && !str_contains($normalizedName, $normalizedQuery)) {
-            continue;
         }
-        $addResult('category:' . (int)$row['id'], [
-            'name' => $categoryName,
-            'detail' => 'Product category',
-            'url' => $appBase . '/categories/categories.php?search=' . rawurlencode($categoryName),
-            'type' => 'Category',
-            'icon' => 'bi-tags',
-        ], 1.3 + count($matchedTerms) * 0.2, $matchedTerms);
     }
-    $categoryQuery->close();
 
-    if (in_array('low_stock', $intents, true)) {
+    if (appUserCan('categories')) {
+        $categoryQuery = $conn->prepare(
+            'SELECT id, name FROM categories ORDER BY name LIMIT 100'
+        );
+        $categoryQuery->execute();
+        $categoryRows = $categoryQuery->get_result();
+        while ($row = $categoryRows->fetch_assoc()) {
+            $categoryName = (string)$row['name'];
+            $normalizedName = normalizeGlobalSearchText($categoryName);
+            $categoryTokens = getGlobalSearchTokens($categoryName);
+            $matchedTerms = array_values(array_intersect($tokens, $categoryTokens));
+            if ($matchedTerms === [] && !str_contains($normalizedName, $normalizedQuery)) {
+                continue;
+            }
+            $addResult('category:' . (int)$row['id'], [
+                'name' => $categoryName,
+                'detail' => 'Product category',
+                'url' => $appBase . '/categories/categories.php?search=' . rawurlencode($categoryName),
+                'type' => 'Category',
+                'icon' => 'bi-tags',
+            ], 1.3 + count($matchedTerms) * 0.2, $matchedTerms);
+        }
+        $categoryQuery->close();
+    }
+
+    if (in_array('low_stock', $intents, true) && appUserCan('inventory') && appUserCan('products')) {
         $stockCondition = str_contains(' ' . normalizeGlobalSearchText($query) . ' ', ' out of stock ')
             ? 'stock = 0'
             : 'stock BETWEEN 1 AND 5';
@@ -465,7 +476,7 @@ try {
         $statement->close();
     }
 
-    if (in_array('high_price', $intents, true)) {
+    if (in_array('high_price', $intents, true) && appUserCan('products')) {
         $statement = $conn->prepare(
             'SELECT id, name, price FROM products WHERE is_deleted = 0 ORDER BY price DESC, id DESC LIMIT 5'
         );
@@ -484,7 +495,7 @@ try {
         $statement->close();
     }
 
-    if (in_array('order', $intents, true) || in_array('recent', $intents, true)) {
+    if ((in_array('order', $intents, true) || in_array('recent', $intents, true)) && appUserCan('orders')) {
         $statuses = [];
         if (in_array('pending', $intents, true)) {
             $statuses = ['Pending', 'Processing'];
@@ -526,7 +537,7 @@ try {
         $statement->close();
     }
 
-    if (in_array('delivered', $intents, true)) {
+    if (in_array('delivered', $intents, true) && appUserCan('orders')) {
         $statement = $conn->prepare("SELECT COUNT(*) AS total FROM orders WHERE status = 'Delivered'");
         $statement->execute();
         $deliveredCount = (int)$statement->get_result()->fetch_assoc()['total'];
@@ -541,14 +552,15 @@ try {
         ], 2.8, ['delivered']);
     }
 
-    if (str_contains($normalizedQuery, ' ')) {
+    if (str_contains($normalizedQuery, ' ')
+        && (appUserCan('products') || appUserCan('categories'))) {
         try {
             $semanticSearch = semanticSearchFindSimilar($conn, $query);
             $semanticAvailable = $semanticSearch['available'];
             foreach ($semanticSearch['matches'] as $match) {
                 $documentId = (int)$match['id'];
                 $similarity = (float)$match['similarity'];
-                if ($match['type'] === 'product') {
+                if ($match['type'] === 'product' && appUserCan('products')) {
                     $statement = $conn->prepare(
                         'SELECT p.id, p.name, p.sku, c.name AS category_name
                          FROM products p LEFT JOIN categories c ON c.id = p.category_id
@@ -568,7 +580,7 @@ try {
                             'icon' => 'bi-box-seam',
                         ], 1.5 + $similarity, $tokens);
                     }
-                } elseif ($match['type'] === 'category') {
+                } elseif ($match['type'] === 'category' && appUserCan('categories')) {
                     $statement = $conn->prepare('SELECT id, name FROM categories WHERE id = ?');
                     $statement->bind_param('i', $documentId);
                     $statement->execute();

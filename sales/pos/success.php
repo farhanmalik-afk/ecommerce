@@ -1,115 +1,125 @@
 <?php
-error_reporting(0);
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
 
 session_start();
-require_once "../../config.php";
+require_once __DIR__ . '/../../config.php';
+require_once __DIR__ . '/../../includes/pos-checkout.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 
-// Stripe Key fetch from environment or fallback config
-$stripeSecretKey = get_env_setting('STRIPE_SECRET_KEY', get_env_setting('STRIPE_API_KEY'));
-if (empty($stripeSecretKey) && isset($stripeSecretKeyConfig)) {
-    $stripeSecretKey = $stripeSecretKeyConfig;
+$stripeSecretKey = trim((string) ($appSettings['stripe_secret_key'] ?? ''));
+if ($stripeSecretKey === '') {
+    $stripeSecretKey = get_env_setting('STRIPE_SECRET_KEY', get_env_setting('STRIPE_API_KEY', $stripeSecretKeyConfig));
 }
-
-if (file_exists("../../vendor/autoload.php")) {
-    require_once "../../vendor/autoload.php";
-    if (!empty($stripeSecretKey)) {
-        \Stripe\Stripe::setApiKey($stripeSecretKey);
-    }
-}
-
-$session_id = $_GET['session_id'] ?? null;
-
-if (!$session_id) {
-    header("Location: pos.php");
+$sessionId = $_GET['session_id'] ?? '';
+if (!is_string($sessionId) || $sessionId === '' || strlen($sessionId) > 255) {
+    header('Location: ' . getBaseUrl() . 'sales/pos/pos.php');
     exit();
 }
 
-if (empty($stripeSecretKey)) {
+if (($appSettings['pos_enabled'] ?? '1') !== '1' || empty($stripeSecretKey)) {
     http_response_code(503);
-    exit('Online payment is not configured. Add the Stripe secret key in config.php.');
+    exit('The payment confirmation service is not configured.');
+}
+if (!isset($_SESSION['pending_stripe_session_id']) || !hash_equals((string) $_SESSION['pending_stripe_session_id'], $sessionId)) {
+    http_response_code(403);
+    exit('This payment session does not match your current checkout.');
+}
+
+$pendingCart = $_SESSION['pending_cart'] ?? null;
+$paymentMethod = $_SESSION['pending_payment_method'] ?? '';
+$taxRate = (float) ($_SESSION['pending_tax_rate'] ?? 0);
+$currency = (string) ($_SESSION['pending_currency'] ?? '');
+if (!is_array($pendingCart) || !in_array($paymentMethod, ['Online Transfer'], true)) {
+    http_response_code(400);
+    exit('The pending checkout could not be found.');
 }
 
 try {
-    $session = \Stripe\Checkout\Session::retrieve($session_id);
-    
-    if ($session->payment_status === 'paid') {
-        $total_amount = $session->amount_total / 100;
-        $order_no = 'ORD-' . strtoupper(substr(uniqid(), -6));
-        $payment_method = $_SESSION['pending_payment_method'] ?? ($session->metadata->payment_method ?? 'Online Transfer');
-        if (!in_array($payment_method, ['Online Transfer', 'Card Payment'], true)) {
-            $payment_method = 'Online Transfer';
-        }
-        $status = 'Delivered'; 
-        $shipping_address = 'Walk-in Counter POS (Online Paid)';
-        $customer_id = NULL;
-        $subtotal = 0.00;
-        
-        foreach ($_SESSION['pending_cart'] ?? [] as $item) {
-            $subtotal += (float)($item['price'] ?? 0) * (int)($item['qty'] ?? 0);
-        }
-        if ($subtotal <= 0) {
-            $subtotal = $total_amount;
-        }
-        $discount = 0.00;
-        $shipping_fee = 0.00;
-
-        // Order database mein insert karein
-        $stmt = $conn->prepare("INSERT INTO orders (order_no, customer_id, subtotal, discount, shipping_fee, total, shipping_address, status, payment_method, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-        $stmt->bind_param("siddddsss", $order_no, $customer_id, $subtotal, $discount, $shipping_fee, $total_amount, $shipping_address, $status, $payment_method);
-        
-        if ($stmt->execute()) {
-            $order_id = $conn->insert_id;
-            $stmt->close();
-           createAdminNotification($conn, 'New order received (' . $payment_method . ')', 'Order ' . $order_no . ' was completed through ' . $payment_method . '.', 'order');
-            // Session se cart utha kar items save karein aur stock minus karein
-            if (isset($_SESSION['pending_cart']) && !empty($_SESSION['pending_cart'])) {
-                $orderItemStmt = $conn->prepare('INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, price, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)');
-                foreach ($_SESSION['pending_cart'] as $item) {
-                    $pid = (int) $item['id'];
-                    $pname = (string) $item['name'];
-                    $unit_price = (float) $item['price'];
-                    $qty = (int) $item['qty'];
-                    $line_total = $unit_price * $qty; // Fixed multiplication error
-                    
-                    $orderItemStmt->bind_param('iisdidd', $order_id, $pid, $pname, $unit_price, $qty, $unit_price, $line_total);
-                    $orderItemStmt->execute();
-                    
-                    $stockStmt = $conn->prepare('SELECT name, stock FROM products WHERE id = ?');
-                    $stockStmt->bind_param('i', $pid);
-                    $stockStmt->execute();
-                    $stockRow = $stockStmt->get_result()->fetch_assoc();
-                    $stockStmt->close();
-                    
-                    if ($stockRow) {
-                        $previousStock = (int) $stockRow['stock'];
-                        $updateStock = $conn->prepare('UPDATE products SET stock = GREATEST(stock - ?, 0) WHERE id = ?');
-                        $updateStock->bind_param('ii', $qty, $pid);
-                        $updateStock->execute();
-                        $updateStock->close();
-                        
-                        notifyAdminStockTransition($conn, (string) $stockRow['name'], $previousStock, max(0, $previousStock - $qty)); // Fixed calculation
-                    }
-                }
-                $orderItemStmt->close();
-                unset($_SESSION['pending_cart']); // Clear session
-                unset($_SESSION['pending_payment_method']);
-            }
-
-            // Seedha invoice page par redirect
-            header("Location: ../orders/invoice.php?id=" . $order_id);
-            exit();
-        } else {
-            throw new Exception("Database error while recording paid order.");
-        }
-
-    } else {
-        echo "<h3 style='color:red; text-align:center; margin-top:50px;'>Payment was not completed.</h3>";
-        echo "<p style='text-align:center;'><a href='pos.php'>Back to POS Counter</a></p>";
+    ensureStripeProcessedSessionsTable($conn);
+    $existingStmt = $conn->prepare('SELECT order_id FROM stripe_processed_sessions WHERE session_id = ? LIMIT 1');
+    if (!$existingStmt) {
+        throw new RuntimeException('Unable to check processed Stripe session: ' . $conn->error);
+    }
+    $existingStmt->bind_param('s', $sessionId);
+    $existingStmt->execute();
+    $existingOrderId = $existingStmt->get_result()->fetch_column();
+    $existingStmt->close();
+    if ($existingOrderId !== null && $existingOrderId !== false) {
+        header('Location: ' . getBaseUrl() . 'sales/orders/invoice.php?id=' . (int) $existingOrderId);
+        exit();
     }
 
-} catch (Exception $e) {
-    echo "<h3 style='color:red; text-align:center; margin-top:50px;'>Error: " . $e->getMessage() . "</h3>";
-    echo "<p style='text-align:center;'><a href='pos.php'>Back to POS Counter</a></p>";
+    \Stripe\Stripe::setApiKey($stripeSecretKey);
+    $paymentSession = \Stripe\Checkout\Session::retrieve($sessionId);
+    if ($paymentSession->payment_status !== 'paid' || strtolower((string) $paymentSession->currency) !== $currency) {
+        http_response_code(402);
+        exit('Payment has not been completed.');
+    }
+
+    $subtotalCents = 0;
+    foreach ($pendingCart as $item) {
+        $subtotalCents += (int) round((float) $item['price'] * 100) * (int) $item['qty'];
+    }
+    $expectedTotalCents = $subtotalCents + (int) round($subtotalCents * $taxRate / 100);
+    if ((int) $paymentSession->amount_total !== $expectedTotalCents) {
+        throw new RuntimeException('Stripe paid amount does not match the stored checkout.');
+    }
+
+    $conn->begin_transaction();
+    $transactionStarted = true;
+    $claimStmt = $conn->prepare('INSERT IGNORE INTO stripe_processed_sessions (session_id) VALUES (?)');
+    $claimStmt->bind_param('s', $sessionId);
+    $claimStmt->execute();
+    if ($claimStmt->affected_rows === 0) {
+        $claimStmt->close();
+        $existingStmt = $conn->prepare('SELECT order_id FROM stripe_processed_sessions WHERE session_id = ? FOR UPDATE');
+        $existingStmt->bind_param('s', $sessionId);
+        $existingStmt->execute();
+        $existingOrderId = $existingStmt->get_result()->fetch_column();
+        $existingStmt->close();
+        if ($existingOrderId !== null && $existingOrderId !== false) {
+            $conn->commit();
+            $transactionStarted = false;
+            header('Location: ' . getBaseUrl() . 'sales/orders/invoice.php?id=' . (int) $existingOrderId);
+            exit();
+        }
+        throw new RuntimeException('The payment session is already being processed.');
+    }
+    $claimStmt->close();
+
+    $cart = validatePosCart($conn, $pendingCart, true, true);
+    $total = ((int) $paymentSession->amount_total) / 100;
+    $orderId = insertPosOrder($conn, $cart, $total, $paymentMethod, 'Walk-in Counter POS (Online Paid)');
+    $saveOrderStmt = $conn->prepare('UPDATE stripe_processed_sessions SET order_id = ? WHERE session_id = ?');
+    $saveOrderStmt->bind_param('is', $orderId, $sessionId);
+    $saveOrderStmt->execute();
+    $saveOrderStmt->close();
+    $conn->commit();
+    $transactionStarted = false;
+
+    notifyPosOrder($conn, $orderId, $paymentMethod, $cart);
+    unset(
+        $_SESSION['pending_cart'],
+        $_SESSION['pending_payment_method'],
+        $_SESSION['pending_tax_rate'],
+        $_SESSION['pending_currency'],
+        $_SESSION['pending_stripe_session_id']
+    );
+    header('Location: ' . getBaseUrl() . 'sales/orders/invoice.php?id=' . $orderId);
+    exit();
+} catch (\Stripe\Exception\ApiErrorException $exception) {
+    if (!empty($transactionStarted)) {
+        $conn->rollback();
+    }
+    error_log('Unable to verify Stripe payment: ' . $exception->getMessage());
+    http_response_code(502);
+    exit('Unable to verify the payment with the payment provider.');
+} catch (InvalidArgumentException | mysqli_sql_exception | RuntimeException $exception) {
+    if (!empty($transactionStarted)) {
+        $conn->rollback();
+    }
+    error_log('Unable to record paid Stripe order: ' . $exception->getMessage());
+    http_response_code(409);
+    exit('Payment was received, but the order could not be finalized. Contact an administrator.');
 }
-?>

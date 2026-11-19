@@ -123,10 +123,10 @@
                             <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
                             <td><span class="badge <?php echo $badgeClass; ?>"><?php echo htmlspecialchars($user['status']); ?></span></td>
                             <td class="text-end pe-3">
-                                <a href="users.php?action=toggle&id=<?php echo $user['id']; ?>" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></a>
+                                <button type="button" onclick="confirmUserStatusChange(<?php echo (int) $user['id']; ?>, this.dataset.status)" data-status="<?php echo htmlspecialchars($user['status'], ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></button>
                                 <a href="edit-user.php?id=<?php echo $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a>
                                 <?php if ($user['id'] != getCurrentAdminId()): ?>
-                                    <a href="users.php?action=delete&id=<?php echo $user['id']; ?>" class="btn btn-sm btn-outline-danger py-0 px-2 delete-btn" data-name="<?php echo htmlspecialchars($user['name']); ?>" title="Move to Trash"><i class="bi bi-trash"></i></a>
+                                    <button type="button" onclick="confirmUserDelete(<?php echo (int) $user['id']; ?>, this.dataset.name)" class="btn btn-sm btn-outline-danger py-0 px-2" data-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>" title="Move to Trash"><i class="bi bi-trash"></i></button>
                                 <?php endif; ?>
                             </td>
                         </tr>

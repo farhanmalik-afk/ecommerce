@@ -1,5 +1,6 @@
 <?php
 error_reporting(0);
+define('APP_JSON_RESPONSE', true);
 include "../config.php";
 header('Content-Type: application/json');
 

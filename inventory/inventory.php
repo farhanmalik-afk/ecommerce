@@ -2,14 +2,22 @@
 session_start();
 include "../config.php";
 
-// Auto-sync products into inventory table if missing
-$all_prods = $conn->query("SELECT id FROM products");
-if ($all_prods) {
-    while ($ap = $all_prods->fetch_assoc()) {
-        $pid = $ap['id'];
-        $check_exists = $conn->query("SELECT product_id FROM inventory WHERE product_id = $pid");
-        if ($check_exists && $check_exists->num_rows == 0) {
-            $conn->query("INSERT INTO inventory (product_id, quantity) VALUES ($pid, 10)"); // Default quantity 10
+if (hasPermission($conn, getCurrentAdminId(), 'inventory', 'create')) {
+    $all_prods = $conn->query('SELECT id FROM products');
+    if ($all_prods) {
+        while ($product = $all_prods->fetch_assoc()) {
+            $productId = (int) $product['id'];
+            $checkExists = $conn->prepare('SELECT product_id FROM inventory WHERE product_id = ?');
+            $checkExists->bind_param('i', $productId);
+            $checkExists->execute();
+            $exists = $checkExists->get_result()->num_rows > 0;
+            $checkExists->close();
+            if (!$exists) {
+                $insertInventory = $conn->prepare('INSERT INTO inventory (product_id, quantity) VALUES (?, 10)');
+                $insertInventory->bind_param('i', $productId);
+                $insertInventory->execute();
+                $insertInventory->close();
+            }
         }
     }
 }

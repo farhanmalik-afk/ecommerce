@@ -48,7 +48,7 @@ $items_result = $items_stmt->get_result();
 $pageTitle = 'Profit Tracker';
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -57,13 +57,14 @@ $pageTitle = 'Profit Tracker';
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <link href="../../assets/css/style.css" rel="stylesheet">
+  <link href="../../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../../assets/js/i18n.js" defer></script>
   <style>
-    body { font-family: 'Inter', sans-serif; background-color: #f5f0e6; }
-    .stat-card { border: 1px solid #e8e1d5; border-radius: 12px; box-shadow: 0 4px 20px rgba(20,36,61,0.06); }
+    body { font-family: 'Inter', sans-serif; background-color: var(--bg); }
+    .stat-card { border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
   </style>
 </head>
-<body>
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 
 <div class="app">
   <?php include "../../layouts/sidebar.php"; ?>

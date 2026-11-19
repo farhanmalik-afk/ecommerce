@@ -5,22 +5,46 @@ session_start();
 // Database connection include karein
 include "../config.php";
 
-// Move a customer to Trash without breaking historical order references.
-if (isset($_GET['delete_id'])) {
-    $del_id = intval($_GET['delete_id']);
-    $stmt = $conn->prepare("UPDATE customers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0");
-    $stmt->bind_param("i", $del_id);
-    if ($stmt->execute() && $stmt->affected_rows > 0) {
-        $_SESSION['swal_success'] = "Customer moved to Trash successfully!";
-    } else {
-        $_SESSION['swal_error'] = "Customer could not be moved to Trash.";
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
     }
-    $stmt->close();
+
+    $customerId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
+    if (!$customerId || $customerId < 1) {
+        http_response_code(400);
+        exit('Invalid customer.');
+    }
+
+    if ($_POST['action'] === 'delete') {
+        $stmt = $conn->prepare("UPDATE customers SET is_deleted = 1 WHERE id = ? AND is_deleted = 0");
+        $stmt->bind_param("i", $customerId);
+        if ($stmt->execute() && $stmt->affected_rows > 0) {
+            $_SESSION['swal_success'] = "Customer moved to Trash successfully!";
+        } else {
+            $_SESSION['swal_error'] = "Customer could not be moved to Trash.";
+        }
+        $stmt->close();
+    } elseif ($_POST['action'] === 'toggle') {
+        $stmt = $conn->prepare("UPDATE customers SET status = CASE WHEN status = 'Active' THEN 'Inactive' ELSE 'Active' END WHERE id = ?");
+        $stmt->bind_param("i", $customerId);
+        if ($stmt->execute()) {
+            $_SESSION['swal_success'] = "Customer status updated successfully!";
+        } else {
+            $_SESSION['swal_error'] = "Failed to update status!";
+        }
+        $stmt->close();
+    }
     header("Location: customers.php");
     exit();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
     $selectedIds = [];
     foreach (is_array($_POST['customer_ids'] ?? null) ? $_POST['customer_ids'] : [] as $postedId) {
         if (!is_scalar($postedId)) {
@@ -48,25 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete'])) {
     exit();
 }
 
-// Status Toggle Action Handle Karna
-if (isset($_GET['toggle_id'])) {
-    $t_id = intval($_GET['toggle_id']);
-    
-    // Current status check karke reverse kar dein (Active <-> Inactive)
-    $stmt = $conn->prepare("UPDATE customers SET status = CASE WHEN status = 'Active' THEN 'Inactive' ELSE 'Active' END WHERE id = ?");
-    $stmt->bind_param("i", $t_id);
-    
-    if ($stmt->execute()) {
-        $_SESSION['swal_success'] = "Customer status updated successfully!";
-    } else {
-        $_SESSION['swal_error'] = "Failed to update status!";
-    }
-    $stmt->close();
-    
-    header("Location: customers.php");
-    exit();
-}
-
 // Search & Filter Input Variables
 $search_query = trim($_GET['search'] ?? '');
 $search_phone = trim($_GET['phone'] ?? '');
@@ -77,8 +82,7 @@ $requested_per_page = filter_var($_GET['per_page'] ?? 10, FILTER_VALIDATE_INT);
 $per_page = in_array($requested_per_page, $per_page_options, true) ? $requested_per_page : 10;
 $pageTitle = 'Customers';
 ?>
-<!DOCTYPE html>
-<html lang="<?= htmlspecialchars(($appSettings['language'] ?? 'en') === 'ur' ? 'ur' : 'en', ENT_QUOTES, 'UTF-8') ?>"<?= ($appSettings['language'] ?? 'en') === 'ur' ? ' dir="rtl"' : '' ?>>
+<!DOCTYPE html><html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -88,7 +92,8 @@ $pageTitle = 'Customers';
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
-  <link href="../assets/css/style.css" rel="stylesheet">
+  <link href="../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../assets/css/style.css') ?>" rel="stylesheet">
+  <script src="../assets/js/i18n.js" defer></script>
     <style>
     /* Ensure customer select column behaves properly when toggled */
     #customersTable th.customer-select-column,
@@ -106,8 +111,7 @@ $pageTitle = 'Customers';
     }
 </style>
 </head>
-<body class="luxury-theme theme-<?= htmlspecialchars($appSettings['theme'] ?? 'luxury', ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="<?= ($appSettings['theme'] ?? '') === 'dark' ? 'dark' : 'light' ?>"<?= ($appSettings['language'] ?? 'en') === 'ur' ? ' dir="rtl"' : '' ?>>
-
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="light">
 <div class="app">
 
   <?php include "../layouts/sidebar.php"; ?>
@@ -117,7 +121,7 @@ $pageTitle = 'Customers';
     <?php include "../layouts/topbar.php"; ?>
 
     <section class="page-head">
-      <h1>Customers Management</h1>
+      <h1><?= htmlspecialchars($langData['customers_management'] ?? 'Customers Management') ?></h1>
       <p>Add new customers and view the list of all registered customers.</p>
     </section>
 
@@ -168,8 +172,7 @@ $pageTitle = 'Customers';
       <div class="col-12">
         <div class="card table-card border-0 shadow-sm">
           <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
-            <div class="d-flex align-items-center gap-2">
-              <h6 class="card-title mb-0 fw-bold">Registered Customers List</h6>
+            <div class="d-flex align-items-center gap-2"><h6 class="card-title mb-0 fw-bold"><?= htmlspecialchars($langData['registered_customers'] ?? 'Registered Customers List') ?></h6>
               <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleCustomerSelection" aria-label="Enable customer selection" aria-pressed="false" title="Enable customer selection"><i class="bi bi-check-square"></i></button>
               <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllCustomers">Select All</button>
               <button type="submit" form="customersBulkForm" class="btn btn-danger btn-sm d-none" id="moveCustomersToTrash" disabled><i class="bi bi-trash me-1"></i>Move Selected to Trash</button>
@@ -196,6 +199,7 @@ $pageTitle = 'Customers';
 
           <form method="POST" action="customers.php" id="customersBulkForm">
           <input type="hidden" name="bulk_delete" value="1">
+          <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
           <div class="table-responsive customer-list-responsive">
             <table class="table data-table align-middle mb-0" id="customersTable">
               <thead class="table-light">
@@ -378,6 +382,22 @@ $pageTitle = 'Customers';
 <script src="../assets/js/table-sort.js" defer></script>
 
 <script>
+const customerActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+function postCustomerAction(action, id) {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'customers.php';
+    [['action', action], ['id', id], ['csrf_token', customerActionCsrf]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function confirmDelete(id) {
     Swal.fire({
         title: 'Are you sure?',
@@ -390,7 +410,7 @@ function confirmDelete(id) {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'customers.php?delete_id=' + id;
+            postCustomerAction('delete', id);
         }
     });
 }
@@ -491,7 +511,7 @@ function confirmStatusChange(id, currentStatus) {
         cancelButtonText: 'Cancel'
     }).then((result) => {
         if (result.isConfirmed) {
-            window.location.href = 'customers.php?toggle_id=' + id;
+            postCustomerAction('toggle', id);
         }
     });
 }

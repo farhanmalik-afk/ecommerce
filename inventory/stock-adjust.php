@@ -17,45 +17,64 @@ $success = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $product_id = intval($_POST['product_id'] ?? 0);
-    $adjust_type = trim($_POST['adjust_type'] ?? 'add');
+    $adjust_type = $_POST['adjust_type'] ?? '';
     $quantity = intval($_POST['quantity'] ?? 0);
     $reason = trim($_POST['reason'] ?? '');
 
-    if ($product_id <= 0 || $quantity <= 0) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    } elseif ($product_id <= 0 || $quantity <= 0 || !in_array($adjust_type, ['add', 'subtract'], true) || mb_strlen($reason) > 1000) {
         $error = "Please select a valid product and quantity.";
     } else {
-        // Check if product exists in inventory table
-        $check_inv = $conn->query("SELECT quantity FROM inventory WHERE product_id = $product_id");
-        
-        if ($check_inv && $check_inv->num_rows > 0) {
-            $inv_data = $check_inv->fetch_assoc();
-            $current_qty = intval($inv_data['quantity']);
+        try {
+            $conn->begin_transaction();
+            $productStmt = $conn->prepare('SELECT name FROM products WHERE id = ? LIMIT 1');
+            $productStmt->bind_param('i', $product_id);
+            $productStmt->execute();
+            $productName = $productStmt->get_result()->fetch_column();
+            $productStmt->close();
+            if (!is_string($productName)) {
+                throw new RuntimeException('The selected product does not exist.');
+            }
 
-            $new_qty = ($adjust_type === 'add') ? ($current_qty + $quantity) : ($current_qty - $quantity);
-            if ($new_qty < 0) $new_qty = 0;
+            $inventoryStmt = $conn->prepare('SELECT quantity FROM inventory WHERE product_id = ? FOR UPDATE');
+            $inventoryStmt->bind_param('i', $product_id);
+            $inventoryStmt->execute();
+            $inventoryRow = $inventoryStmt->get_result()->fetch_assoc();
+            $inventoryStmt->close();
 
-            // Update inventory table
-            $conn->query("UPDATE inventory SET quantity = $new_qty WHERE product_id = $product_id");
-        } else {
-            // Insert new record into inventory if not exists
-            $current_qty = 6;
-            $new_qty = ($adjust_type === 'add') ? $quantity : 0;
-            $conn->query("INSERT INTO inventory (product_id, quantity) VALUES ($product_id, $new_qty)");
+            $current_qty = (int) ($inventoryRow['quantity'] ?? 0);
+            $new_qty = $adjust_type === 'add'
+                ? $current_qty + $quantity
+                : max(0, $current_qty - $quantity);
+
+            if ($inventoryRow) {
+                $updateStmt = $conn->prepare('UPDATE inventory SET quantity = ? WHERE product_id = ?');
+                $updateStmt->bind_param('ii', $new_qty, $product_id);
+                $updateStmt->execute();
+                $updateStmt->close();
+            } else {
+                $insertInventory = $conn->prepare('INSERT INTO inventory (product_id, quantity) VALUES (?, ?)');
+                $insertInventory->bind_param('ii', $product_id, $new_qty);
+                $insertInventory->execute();
+                $insertInventory->close();
+            }
+
+            $historyStmt = $conn->prepare(
+                'INSERT INTO stock_history (product_id, type, quantity, reason, created_at) VALUES (?, ?, ?, ?, NOW())'
+            );
+            $historyStmt->bind_param('isis', $product_id, $adjust_type, $quantity, $reason);
+            $historyStmt->execute();
+            $historyStmt->close();
+            $conn->commit();
+
+            notifyAdminStockTransition($conn, $productName, $current_qty, $new_qty, (int) $product_id);
+            $success = true;
+        } catch (mysqli_sql_exception | RuntimeException $exception) {
+            $conn->rollback();
+            error_log('Unable to adjust product stock: ' . $exception->getMessage());
+            $error = 'The stock adjustment could not be saved.';
         }
-
-        $productStmt = $conn->prepare('SELECT name FROM products WHERE id = ?');
-        $productStmt->bind_param('i', $product_id);
-        $productStmt->execute();
-        $productName = $productStmt->get_result()->fetch_column();
-        $productStmt->close();
-        if (is_string($productName)) {
-            notifyAdminStockTransition($conn, $productName, $current_qty, $new_qty);
-        }
-
-        // Insert log into stock_history
-        $conn->query("INSERT INTO stock_history (product_id, type, quantity, reason, created_at) VALUES ($product_id, '$adjust_type', $quantity, '$reason', NOW())");
-
-        $success = true;
     }
 }
 
@@ -95,6 +114,7 @@ include "../layouts/header.php";
     <div class="card border-0 shadow-sm col-lg-8 mx-auto">
         <div class="card-body p-4">
             <form action="stock-adjust.php" method="POST">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
                 <div class="mb-3">
                     <label class="form-label font-weight-bold">Select Product</label>
                     <select name="product_id" class="form-select" required>
@@ -105,7 +125,7 @@ include "../layouts/header.php";
                                                    LEFT JOIN inventory i ON p.id = i.product_id");
                         while ($pr = $prod_res->fetch_assoc()) {
                             $selected = (isset($_GET['product_id']) && $_GET['product_id'] == $pr['id']) ? 'selected' : '';
-                            echo "<option value='{$pr['id']}' $selected>{$pr['name']} (Current Qty: {$pr['quantity']})</option>";
+                            echo '<option value="' . (int) $pr['id'] . '" ' . $selected . '>' . htmlspecialchars($pr['name'], ENT_QUOTES, 'UTF-8') . ' (Current Qty: ' . (int) $pr['quantity'] . ')</option>';
                         }
                         ?>
                     </select>

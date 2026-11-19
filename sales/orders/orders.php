@@ -12,6 +12,10 @@ try {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Your session expired. Refresh the page and try again.');
+    }
     $orderIds = getPostedOrderIds();
     if (empty($orderIds)) {
         $_SESSION['order_trash_notice'] = ['danger', 'Select at least one order to move to trash.'];
@@ -114,6 +118,7 @@ include "../../layouts/header.php";
 
         <form method="POST" action="orders.php" id="ordersBulkForm">
         <input type="hidden" name="bulk_delete" value="1">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="d-flex align-items-center gap-2 p-3 pb-0">
             <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleOrderSelection" aria-label="Enable order selection" aria-pressed="false" title="Enable order selection">
                 <i class="bi bi-check-square"></i>

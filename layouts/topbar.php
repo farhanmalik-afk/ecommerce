@@ -12,17 +12,24 @@ while (in_array(basename($dashboardBase), $moduleFolders, true)) {
 $dashboardHref = $dashboardBase . '/index.php';
 $posHref = $dashboardBase . '/sales/pos/pos.php';
 $isPosPage = basename($scriptPath) === 'pos.php';
-$notificationCountResult = $conn->query('SELECT COUNT(*) AS total FROM notifications WHERE is_read = 0 AND is_deleted = 0');
-if ($notificationCountResult === false) {
-    throw new RuntimeException('Unable to load unread notifications: ' . $conn->error);
+$canViewNotifications = appUserCan('notifications');
+$notificationCount = 0;
+$notifications = [];
+$notificationCsrfToken = '';
+if ($canViewNotifications) {
+    $notificationCountResult = $conn->query('SELECT COUNT(*) AS total FROM notifications WHERE is_read = 0 AND is_deleted = 0');
+    if ($notificationCountResult === false) {
+        throw new RuntimeException('Unable to load unread notifications: ' . $conn->error);
+    }
+    $notificationCount = (int) ($notificationCountResult->fetch_assoc()['total'] ?? 0);
+    $notificationResult = $conn->query('SELECT id, title, message, type, target_id, is_read, created_at FROM notifications WHERE is_read = 0 AND is_deleted = 0 ORDER BY created_at DESC, id DESC LIMIT 8');
+    if ($notificationResult === false) {
+        throw new RuntimeException('Unable to load notifications: ' . $conn->error);
+    }
+    $notifications = $notificationResult->fetch_all(MYSQLI_ASSOC);
+    $notificationCsrfToken = $_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32));
 }
-$notificationCount = (int) ($notificationCountResult->fetch_assoc()['total'] ?? 0);
-$notificationResult = $conn->query('SELECT id, title, message, type, is_read, created_at FROM notifications WHERE is_read = 0 AND is_deleted = 0 ORDER BY created_at DESC, id DESC LIMIT 8');
-if ($notificationResult === false) {
-    throw new RuntimeException('Unable to load notifications: ' . $conn->error);
-}
-$notifications = $notificationResult->fetch_all(MYSQLI_ASSOC);
-$notificationCsrfToken = $_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32));
+$logoutCsrfToken = csrfToken();
 $notificationTypeIcons = [
     'order' => 'bi-receipt',
     'stock' => 'bi-exclamation-triangle',
@@ -40,14 +47,14 @@ $notificationTypeIcons = [
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
                 <li class="breadcrumb-item">
-                    <a class="btn btn-sm btn-outline-dark rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center header-breadcrumb-btn" href="<?= htmlspecialchars($dashboardHref, ENT_QUOTES, 'UTF-8') ?>">
+                    <a class="btn btn-sm rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center header-breadcrumb-btn" href="<?= htmlspecialchars($dashboardHref, ENT_QUOTES, 'UTF-8') ?>">
                         <i class="bi bi-house-door-fill me-1"></i>Dashboard
                     </a>
                 </li>
                 <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($pageTitle ?? 'Page', ENT_QUOTES, 'UTF-8') ?></li>
             </ol>
         </nav>
-        <?php if (!$isPosPage && ($appSettings['pos_enabled'] ?? '1') === '1' && appUserCan('pos')): ?>
+        <?php if (!$isPosPage && ($appSettings['pos_module_enabled'] ?? '1') === '1' && appUserCan('pos')): ?>
             <a class="header-pos-btn" href="<?= htmlspecialchars($posHref, ENT_QUOTES, 'UTF-8') ?>">
                 <i class="bi bi-receipt-cutoff" aria-hidden="true"></i>
                 <span>Open POS</span>
@@ -58,6 +65,7 @@ $notificationTypeIcons = [
     <div class="topbar-tools d-flex align-items-center gap-3">
         <?php include __DIR__ . '/global-search-control.php'; ?>
         <?php if (appUserCan('settings')): ?><a href="<?= htmlspecialchars($dashboardBase, ENT_QUOTES, 'UTF-8') ?>/settings.php" class="topbar-action" aria-label="Settings" title="Settings"><i class="bi bi-gear"></i></a><?php endif; ?>
+        <?php if ($canViewNotifications): ?>
         <div class="dropdown">
             <button type="button" class="topbar-action notification-action<?= $notificationCount > 0 ? ' has-notifications' : '' ?>" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Notifications<?= $notificationCount > 0 ? ', ' . $notificationCount . ' unread' : '' ?>" title="Notifications">
                 <i class="bi bi-bell"></i>
@@ -73,9 +81,13 @@ $notificationTypeIcons = [
                 <?php if ($notifications): ?>
                     <div class="notification-list">
                         <?php foreach ($notifications as $notification): ?>
-                            <?php $notificationType = $notification['type']; ?>
+                            <?php
+                            $notificationType = $notification['type'];
+                            $notificationHref = adminNotificationTargetHref($notification, $dashboardBase)
+                                ?? $dashboardBase . '/notifications.php?focus=' . (int) $notification['id'];
+                            ?>
                             <a class="notification-item<?= (int) $notification['is_read'] === 0 ? ' is-unread' : '' ?>"
-                               href="<?= htmlspecialchars($dashboardBase . '/notifications.php?focus=' . (int) $notification['id'], ENT_QUOTES, 'UTF-8') ?>"
+                               href="<?= htmlspecialchars($notificationHref, ENT_QUOTES, 'UTF-8') ?>"
                                data-notification-id="<?= (int) $notification['id'] ?>">
                                 <span class="notification-item-icon"><i class="bi <?= htmlspecialchars($notificationTypeIcons[$notificationType] ?? 'bi-bell', ENT_QUOTES, 'UTF-8') ?>"></i></span>
                                 <span class="notification-item-copy">
@@ -93,6 +105,10 @@ $notificationTypeIcons = [
                 <p class="notification-action-error d-none" role="alert"></p>
             </div>
         </div>
-        <a href="#" class="topbar-action" aria-label="Account" title="Account"><i class="bi bi-person-circle"></i></a>
+        <?php endif; ?>
+        <form method="post" action="<?= htmlspecialchars($dashboardBase, ENT_QUOTES, 'UTF-8') ?>/logout.php" class="m-0">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($logoutCsrfToken, ENT_QUOTES, 'UTF-8') ?>">
+            <button type="submit" class="topbar-action" aria-label="Sign out" title="Sign out"><i class="bi bi-box-arrow-right"></i></button>
+        </form>
     </div>
 </header>

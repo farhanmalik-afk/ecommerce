@@ -2,9 +2,9 @@
 session_start();
 include "../../config.php";
 
-if (($appSettings['pos_enabled'] ?? '1') !== '1') {
-    http_response_code(403);
-    exit('The POS module is disabled in Admin Settings.');
+$posStatus = $appSettings['pos_module_enabled'] ?? $appSettings['pos_enabled'] ?? '1';
+if ($posStatus !== '1' || !appModuleEnabled('pos')) {
+    sendAppError(403, 'The POS module is currently unavailable.', 'module');
 }
 
 $_SESSION['pos_checkout_csrf'] ??= bin2hex(random_bytes(32));
@@ -48,17 +48,11 @@ $products_result = $stmt->get_result();
 // Recent POS Orders fetch karne ke liye query
 $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 ?>
-<!DOCTYPE html>
-<html lang="<?= htmlspecialchars(($appSettings['language'] ?? 'en') === 'ur' ? 'ur' : 'en', ENT_QUOTES, 'UTF-8') ?>"<?= ($appSettings['language'] ?? 'en') === 'ur' ? ' dir="rtl"' : '' ?>>
+<!DOCTYPE html><html lang="<?= htmlspecialchars(appLanguage(), ENT_QUOTES, 'UTF-8') ?>" dir="<?= appLanguage() === 'ur' ? 'rtl' : 'ltr' ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Dashboard POS Counter & Billing</title>
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>POS & Order Billing</title>
-
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
@@ -67,15 +61,14 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
     <!-- Custom Style -->
-    <link href="../../assets/css/style.css" rel="stylesheet">
+    <link href="../../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../../assets/css/style.css') ?>" rel="stylesheet">
     
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
-    <!-- ⭐️ YAHAN HTML5-QRCODE LIBRARY ADD KAREIN ⭐️ -->
+    <!-- HTML5-QRCODE Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-</head>
-  <style>
+ <style>
     /* Poori screen ko lock karne ke liye taake page ka baqi hissa scroll na ho */
     html, body {
         height: 100vh;
@@ -83,36 +76,42 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         padding: 0;
         overflow: hidden !important;
         font-family: 'Inter', sans-serif; 
-        background-color: #f5f0e6; 
+        background-color: var(--bg);
     }
 
-    /* Main app container ko screen height ke mutabiq fix karna */
+    /* Main app container ko screen height ke mutabiq fix karna (Compact Padding) */
     .app-container-lock {
         height: 100vh;
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        padding: 15px 20px;
+        padding: 8px 15px !important;
     }
 
     /* Main content area - FIXED */
     .app-main {
-        height: calc(100vh - 40px);
+        height: calc(100vh - 25px);
         display: flex;
         flex-direction: column;
         overflow: hidden;
     }
 
-    /* Products wala left column scrollable banana - FIXED */
+   /* Products wala left container */
     .products-scroll-area {
-        height: calc(100vh - 240px);
+        height: calc(100vh - 210px);
         overflow-y: auto;
         padding-right: 5px;
     }
 
+    /* Products ka row container */
+    #products-grid-container {
+        align-content: flex-start !important;
+        align-items: flex-start !important;
+    }
+
     /* Product Card Professional Styling */
     .product-card {
-        border: 1px solid #e8e1d5;
+        border: 1px solid var(--border);
         border-radius: 12px;
         transition: all 0.25s ease;
         background: #fff;
@@ -127,15 +126,15 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     .product-card:hover {
         transform: translateY(-4px);
         box-shadow: 0 10px 25px rgba(20, 36, 61, 0.12);
-        border-color: #c6a15b;
+        border-color: var(--gold);
     }
 
     /* Image Wrapper */
     .product-img-wrapper {
         width: 100%;
-        height: 160px;
+        height: 150px;
         overflow: hidden;
-        background-color: #f5f0e6;
+        background-color: var(--bg);
         position: relative;
         margin: 0;
         padding: 0;
@@ -161,63 +160,70 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     /* Category Pills */
     .category-pill {
         border-radius: 20px;
-        padding: 6px 16px;
+        padding: 5px 14px;
         font-weight: 500;
-        font-size: 0.875rem;
-        border: 1px solid #e8e1d5;
+        font-size: 0.85rem;
+        border: 1px solid var(--border);
         background-color: #ffffff;
-        color: #14243d;
+        color: var(--dark);
         transition: all 0.2s ease-in-out;
         white-space: nowrap;
     }
     .category-pill:hover, .category-pill:focus {
-        background-color: #c6a15b !important;
-        color: #14243d !important;
-        border-color: #c6a15b !important;
+        background-color: var(--gold) !important;
+        color: var(--dark) !important;
+        border-color: var(--gold) !important;
         box-shadow: none !important;
     }
     .category-pill.btn-dark {
-        background-color: #14243d !important;
+        background-color: var(--dark) !important;
         color: #ffffff !important;
-        border-color: #14243d !important;
+        border-color: var(--dark) !important;
     }
 
-    /* Professional Scrollable Cart Sidebar Layout - FIXED */
+    /* Cart Sidebar Wrapper - Flex column layout */
     .cart-sidebar-wrapper {
-        height: calc(100vh - 160px);
-        overflow-y: auto;
-        padding-right: 5px;
+        height: calc(100vh - 120px);
+        display: flex;
+        flex-direction: column;
     }
 
     #payment-method, .form-select {
         cursor: pointer !important;
     }
     
+    /* Cart Sidebar Box - Fills available height cleanly without bottom gaps */
     .cart-sidebar {
         background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 4px 20px rgba(20, 36, 61, 0.07);
-        border: 1px solid #e8e1d5;
+        border: 1px solid var(--border);
         display: flex;
         flex-direction: column;
-        padding: 1.25rem !important;
+        flex-grow: 1;
+        height: 100%;
+        padding: 1rem !important;
+        overflow: hidden;
     }
     
+    /* Cart Items Scroll Area - Fluid and scrollable vertically */
     .cart-items-scroll {
-        max-height: none; 
-        overflow-y: visible;
+        flex-grow: 1;
+        overflow-y: auto;
+        padding-right: 4px;
+        min-height: 80px;
     }
 
     .btn-dashboard-action {
-        background-color: #14243d;
-        border-color: #14243d;
+        background-color: var(--dark);
+        border-color: var(--dark);
         color: #ffffff;
         font-weight: 600;
     }
     .btn-dashboard-action:hover {
-        background-color: #c6a15b;
-        border-color: #c6a15b;
-        color: #14243d;
+        background-color: var(--gold);
+        border-color: var(--gold);
+        color: var(--dark);
     }
 
     #barcode-scanner-input {
@@ -232,18 +238,18 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         z-index: 5;
     }
     #interactive {
-    width: 100%;
-    min-height: 300px;
-    background-color: #000; /* Jab tak camera start ho, black background dikhega */
-    border-radius: 10px;
-    position: relative;
-}
-#interactive video {
-    width: 100% !important;
-    height: auto !important;
-    border-radius: 10px;
-    object-fit: cover;
-}
+        width: 100%;
+        min-height: 300px;
+        background-color: #000;
+        border-radius: 10px;
+        position: relative;
+    }
+    #interactive video {
+        width: 100% !important;
+        height: auto !important;
+        border-radius: 10px;
+        object-fit: cover;
+    }
 
 @media (max-width: 991.98px) {
     html, body {
@@ -278,74 +284,77 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 }
 </style>
 </head>
-<body class="theme-<?= htmlspecialchars($appSettings['theme'] ?? 'luxury', ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="<?= ($appSettings['theme'] ?? '') === 'dark' ? 'dark' : 'light' ?>">
-
+<body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="light">
 <div class="app app-container-lock">
   <main class="app-main">
-    <header class="topbar mb-2 bg-white p-3 rounded-4 shadow-sm border d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+    <!-- Compact & Professional Top Header -->
+    <header class="topbar mb-2 bg-white px-3 py-2 rounded-4 shadow-sm border d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 flex-shrink-0">
         <div class="d-flex align-items-center gap-3 flex-wrap">
-            <a href="../../index.php" class="btn btn-sm btn-outline-dark px-3 py-1.5 rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center">
+            <a href="../../index.php" class="btn btn-sm btn-outline-dark px-3 py-1 rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center">
                 <i class="bi bi-house-door-fill me-1"></i> Dashboard
             </a>
             <div class="vr text-muted opacity-25 d-none d-md-block"></div>
             <div>
-                <h1 class="fw-bold text-dark fs-4 mb-0">POS &amp; Order Billing</h1>
-                <p class="text-muted small mb-0">Manage inventory stock and complete fast checkouts.</p>
+                <h5 class="fw-bold text-dark mb-0"><?= htmlspecialchars($langData['pos_counter'] ?? 'POS & Order Billing') ?></h5>
+                <p class="text-muted mb-0" style="font-size: 11px;">Manage inventory stock and complete fast checkouts.</p>
             </div>
         </div>
 
         <div class="d-flex align-items-center flex-wrap gap-2">
-            <div class="bg-light border px-3 py-1 rounded-pill small d-flex align-items-center gap-2 shadow-sm">
-                <i class="bi bi-cash-stack text-success"></i>
-                <span class="text-muted">Sales:</span>
-                <strong class="text-dark"><?php echo htmlspecialchars(formatAppCurrency($counter_sales), ENT_QUOTES, 'UTF-8'); ?></strong>
-            </div>
-
-            <div class="bg-light border px-3 py-1 rounded-pill small d-flex align-items-center gap-2 shadow-sm">
-                <i class="bi bi-receipt text-primary"></i>
-                <span class="text-muted">Orders:</span>
-                <strong class="text-dark"><?php echo $today_orders_count; ?></strong>
-            </div>
-
-            <div class="badge bg-dark text-white px-3 py-2 rounded-pill small fw-normal d-flex align-items-center gap-1 shadow-sm">
-                <i class="bi bi-clock text-warning"></i> <?php echo date('d M Y, h:i A'); ?>
+            <div class="d-flex align-items-center bg-light border px-3 py-1.5 rounded-pill shadow-sm gap-3" style="font-size: 12px;">
+                <div class="d-flex align-items-center gap-1.5">
+                    <i class="bi bi-cash-stack text-success fs-6"></i>
+                    <span class="text-muted">Sales:</span>
+                    <strong class="text-dark"><?php echo htmlspecialchars(formatAppCurrency($counter_sales), ENT_QUOTES, 'UTF-8'); ?></strong>
+                </div>
+                <div class="vr opacity-25" style="height: 14px;"></div>
+                <div class="d-flex align-items-center gap-1.5">
+                    <i class="bi bi-receipt text-primary fs-6"></i>
+                    <span class="text-muted">Orders:</span>
+                    <strong class="text-dark"><?php echo $today_orders_count; ?></strong>
+                </div>
+                <div class="vr opacity-25" style="height: 14px;"></div>
+                <div class="d-flex align-items-center gap-1.5 text-dark fw-medium">
+                    <i class="bi bi-clock text-warning fs-6"></i>
+                    <span><?php echo date('d M Y, h:i A'); ?></span>
+                </div>
             </div>
         </div>
     </header>
 
-    <div class="row g-4 flex-grow-1 overflow-hidden">
+    <div class="row g-3 flex-grow-1 overflow-hidden">
       <!-- Left Section -->
       <div class="col-lg-8 d-flex flex-column overflow-hidden">
         
-        <div class="card border-0 shadow-sm p-3 mb-3 rounded-4 flex-shrink-0">
+        <div class="card border-0 shadow-sm p-2.5 mb-2 rounded-4 flex-shrink-0">
           <form method="GET" action="" class="row g-2 align-items-center">
             <div class="col-xl-4 col-md-4">
               <div class="input-group bg-light rounded-pill overflow-hidden border">
                 <span class="input-group-text bg-transparent border-0 ps-3"><i class="bi bi-search text-muted"></i></span>
-                <input type="text" name="search" class="form-control border-0 bg-transparent shadow-none" placeholder="Search by name..." value="<?php echo htmlspecialchars($search); ?>">
+                <input type="text" name="search" class="form-control border-0 bg-transparent shadow-none form-control-sm" placeholder="Search by name..." value="<?php echo htmlspecialchars($search); ?>">
               </div>
             </div>
             <div class="col-xl-5 col-md-5">
               <div class="input-group bg-light rounded-pill overflow-hidden border">
                 <span class="input-group-text bg-transparent border-0 ps-3"><i class="bi bi-upc-scan text-primary"></i></span>
-                <input type="text" id="barcode-scanner-input" class="form-control border-0 bg-transparent shadow-none" placeholder="Scan Barcode / SKU here..." autofocus>
+                <input type="text" id="barcode-scanner-input" class="form-control border-0 bg-transparent shadow-none form-control-sm" placeholder="Scan Barcode / SKU here..." autofocus>
                 <!-- Camera Open Button -->
-                <button type="button" class="btn btn-outline-primary border-0 px-3" onclick="openCameraScanner()" title="Scan with Camera">
+                <button type="button" class="btn btn-outline-primary border-0 px-3 py-1" onclick="openCameraScanner()" title="Scan with Camera">
                  <i class="bi bi-camera-fill fs-5"></i>
                 </button>  
-            </div>
+              </div>
             </div>
             <div class="col-xl-3 col-md-3 d-flex gap-2">
-              <button type="submit" class="btn btn-dark w-100 rounded-pill fw-semibold btn-sm py-2">Filter</button>
+              <button type="submit" class="btn btn-dark w-100 rounded-pill fw-semibold btn-sm py-1.5">Filter</button>
               <?php if (!empty($search) || !empty($selected_cat)): ?>
-                <a href="pos.php" class="btn btn-outline-secondary rounded-pill btn-sm px-3 py-2">Reset</a>
+                <a href="pos.php" class="btn btn-outline-secondary rounded-pill btn-sm px-3 py-1.5">Reset</a>
               <?php endif; ?>
             </div>
           </form>
         </div>
 
         <!-- Categories -->
-        <div class="d-flex gap-2 overflow-auto pb-2 mb-3 flex-shrink-0">
+        <div class="d-flex gap-2 overflow-auto pb-1 mb-2 flex-shrink-0">
           <a href="pos.php" class="btn btn-sm category-pill <?php echo empty($selected_cat) ? 'btn-dark' : ''; ?>">
             <i class="bi bi-grid-fill me-1"></i> All Products
           </a>
@@ -366,31 +375,31 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
                     
                     <div class="product-img-wrapper">
                       <img src="../../uploads/<?php echo htmlspecialchars($prod['image'] ?? 'default.jpg'); ?>" alt="Product" onerror="this.src='https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'">
-                      <span class="position-absolute top-0 start-0 m-2 badge bg-dark opacity-75 small px-2 py-1">
+                      <span class="position-absolute top-0 start-0 m-2 badge bg-dark opacity-75 small px-2 py-1" style="font-size: 10px;">
                         <?php echo htmlspecialchars($prod['category_name'] ?? 'Store'); ?>
                       </span>
                     </div>
 
-                    <div class="card-body d-flex flex-column p-3">
-                      <h6 class="fw-bold mb-1 text-truncate text-dark" title="<?php echo htmlspecialchars($prod['name']); ?>">
+                    <div class="card-body d-flex flex-column p-2.5">
+                      <h6 class="fw-bold mb-1 text-truncate text-dark" style="font-size: 0.9rem;" title="<?php echo htmlspecialchars($prod['name']); ?>">
                         <?php echo htmlspecialchars($prod['name']); ?>
                       </h6>
                       
                       <div class="mb-2 d-flex justify-content-between align-items-center">
-                        <span class="badge bg-light text-secondary border px-2 py-1 small">
+                        <span class="badge bg-light text-secondary border px-2 py-0.5" style="font-size: 11px;">
                           <i class="bi bi-box-seam me-1"></i> Stock: <strong class="text-dark product-stock-val"><?php echo $prod['stock'] ?? 0; ?></strong>
                         </span>
                         <?php if(!empty($prod['sku'])): ?>
-                          <span class="text-muted" style="font-size: 11px;">SKU: <?php echo htmlspecialchars($prod['sku']); ?></span>
+                          <span class="text-muted" style="font-size: 10px;">SKU: <?php echo htmlspecialchars($prod['sku']); ?></span>
                         <?php endif; ?>
                       </div>
 
                       <div class="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
                         <div>
-                          <span class="text-muted small d-block" style="font-size: 11px;">Price</span>
-                          <span class="fw-bold text-dark fs-6"><?php echo htmlspecialchars(formatAppCurrency($prod['price']), ENT_QUOTES, 'UTF-8'); ?></span>
+                          <span class="text-muted small d-block" style="font-size: 10px;">Price</span>
+                          <span class="fw-bold text-dark" style="font-size: 0.95rem;"><?php echo htmlspecialchars(formatAppCurrency($prod['price']), ENT_QUOTES, 'UTF-8'); ?></span>
                         </div>
-                        <button class="btn btn-sm btn-outline-dark px-2 py-1" onclick="event.stopPropagation(); addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
+                        <button class="btn btn-sm btn-outline-dark px-2 py-0.5" style="font-size: 12px;" onclick="event.stopPropagation(); addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
                           <i class="bi bi-plus-lg"></i> Add
                         </button>
                       </div>
@@ -414,62 +423,61 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
       <!-- Right Section: Cart & Checkout -->
       <div class="col-lg-4">
         <div class="cart-sidebar-wrapper">
-          <div class="cart-sidebar p-4">
-            <div class="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom flex-shrink-0">
-              <h5 class="fw-bold mb-0 text-dark"><i class="bi bi-cart3 text-dark me-2"></i> Order Cart</h5>
+          <div class="cart-sidebar p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom flex-shrink-0">
+              <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-cart3 text-dark me-2"></i> Order Cart</h6>
               <div class="d-flex align-items-center gap-2">
-                <span class="badge counter-active-badge px-3 py-2 rounded-pill fw-semibold">Counter Active</span>
-                <button type="button" id="clear-cart-button" class="btn btn-sm btn-outline-danger cart-clear-button" onclick="clearCart()" aria-label="Clear cart" title="Clear cart" disabled>
+                <span class="badge counter-active-badge px-2.5 py-1 rounded-pill fw-semibold" style="font-size: 11px;">Counter Active</span>
+                <button type="button" id="clear-cart-button" class="btn btn-sm btn-outline-danger cart-clear-button py-0 px-2" onclick="clearCart()" aria-label="Clear cart" title="Clear cart" disabled>
                   <i class="bi bi-trash3" aria-hidden="true"></i>
                 </button>
               </div>
             </div>
 
-            <div class="mb-3 flex-shrink-0">
-              <div class="d-flex justify-content-between small text-muted mb-1">
+            <div class="mb-2 flex-shrink-0">
+              <div class="d-flex justify-content-between small text-muted mb-1" style="font-size: 11px;">
                 <span>Customer Type</span>
                 <span class="fw-bold text-dark">Walk-in Customer</span>
               </div>
-              <div class="d-flex justify-content-between small text-muted mb-2">
+              <div class="d-flex justify-content-between small text-muted mb-2" style="font-size: 11px;">
                 <span>POS Terminal</span>
                 <span class="fw-bold text-dark">Terminal #01</span>
               </div>
               <div class="mb-2">
-              <label class="form-label small fw-bold text-dark mb-1">Payment Method:</label>
-              <select id="payment-method" class="form-select form-select-sm">
-               <option value="Cash">Cash</option>
-               <option value="Online Transfer">Online Transfer</option>
-               
-              </select>
+                <label class="form-label small fw-bold text-dark mb-1" style="font-size: 11px;">Payment Method:</label>
+                <select id="payment-method" class="form-select form-select-sm py-1">
+                 <option value="Cash">Cash</option>
+                 <option value="Online Transfer">Online Transfer</option>
+                </select>
               </div>
             </div>
 
             <!-- Cart Items -->
-            <div id="cart-items-container" class="cart-items-scroll mb-3 border-top border-bottom py-2">
-              <div class="text-center text-muted py-5" id="empty-cart-text">
-                <i class="bi bi-basket fs-2 text-black-50 mb-1 d-block"></i>
-                <p class="small mb-0">Your cart is empty. Click any product or scan barcode to add items.</p>
+            <div id="cart-items-container" class="cart-items-scroll mb-2 border-top border-bottom py-2">
+              <div class="text-center text-muted py-4" id="empty-cart-text">
+                <i class="bi bi-basket fs-3 text-black-50 mb-1 d-block"></i>
+                <p class="small mb-0" style="font-size: 12px;">Your cart is empty. Click any product or scan barcode.</p>
               </div>
             </div>
 
             <!-- Totals & Checkout -->
-            <div class="mt-auto pt-2 flex-shrink-0">
-              <div class="mb-3">
-                <div class="d-flex justify-content-between mb-2 text-muted small">
+            <div class="mt-auto pt-1 flex-shrink-0">
+              <div class="mb-2">
+                <div class="d-flex justify-content-between mb-1 text-muted small" style="font-size: 11px;">
                   <span>Subtotal</span>
                   <span id="sub-total" class="fw-semibold text-dark"><?= htmlspecialchars(appCurrencySymbol(), ENT_QUOTES, 'UTF-8') ?>0.00</span>
                 </div>
-                <div class="d-flex justify-content-between mb-2 text-muted small">
+                <div class="d-flex justify-content-between mb-1 text-muted small" style="font-size: 11px;">
                   <span>Estimated Tax (<?= htmlspecialchars(rtrim(rtrim(number_format($posTaxRate, 2), '0'), '.'), ENT_QUOTES, 'UTF-8') ?>%)</span>
                   <span id="tax-amount" class="fw-semibold text-dark"><?= htmlspecialchars(appCurrencySymbol(), ENT_QUOTES, 'UTF-8') ?>0.00</span>
                 </div>
-                <div class="d-flex justify-content-between fw-bold fs-5 text-dark mt-2 pt-2 border-top">
+                <div class="d-flex justify-content-between fw-bold fs-6 text-dark mt-1 pt-1 border-top">
                   <span>Grand Total</span>
                   <span id="grand-total" class="text-success"><?= htmlspecialchars(appCurrencySymbol(), ENT_QUOTES, 'UTF-8') ?>0.00</span>
                 </div>
               </div>
 
-              <button type="button" id="posCheckoutButton" class="btn btn-dashboard-action w-100 py-2.5 fw-bold shadow-sm rounded-pill" onclick="confirmAndCheckout()">
+              <button type="button" id="posCheckoutButton" class="btn btn-dashboard-action w-100 py-2 fw-bold shadow-sm rounded-pill" onclick="confirmAndCheckout()" style="font-size: 13px;">
                 <i class="bi bi-bag-check-fill me-2"></i> Complete & Print Invoice
               </button>
             </div>
@@ -491,6 +499,7 @@ const POS_TAX_RATE = <?= json_encode($posTaxRate) ?>;
 const POS_CHECKOUT_CSRF = <?= json_encode($_SESSION['pos_checkout_csrf'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 let checkoutInProgress = false;
 let checkoutRedirecting = false;
+
 document.addEventListener("DOMContentLoaded", function() {
     const barcodeInput = document.getElementById('barcode-scanner-input');
     
@@ -505,41 +514,24 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         });
 
-        // Barcode Scanner Event (Fixed & Working)
+        // Barcode Scanner Event with Prefix Cleaning (Fixes SKU: prefix issue)
         barcodeInput.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                let barcode = this.value.trim();
-                if (barcode === '') return;
+                let rawValue = this.value.trim();
+                if (rawValue === '') return;
 
-                fetch('get_product_by_barcode.php?barcode=' + encodeURIComponent(barcode))
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success' && data.product) {
-                            let p = data.product;
-                            addToCart(parseInt(p.id), p.name, parseFloat(p.price), parseInt(p.stock ?? 0));
-                            this.value = '';
-                        } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Product Not Found!',
-                                text: 'No product matched with SKU/Barcode: ' + barcode,
-                                timer: 1500,
-                                showConfirmButton: false
-                            });
-                            this.value = '';
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Fetch Error:', error);
-                        this.value = '';
-                    });
+                // Clean barcode / SKU prefix if scanned with 'SKU:' or similar prefixes
+                let barcode = rawValue.replace(/^sku[:\s]+/i, '').trim();
+
+                fetchProductByBarcode(barcode);
+                this.value = '';
             }
         });
     }
 });
 
-// Add to Cart Function
+// Add to Cart Function with Toast Notification
 function addToCart(id, name, price, stock) {
     if (stock <= 0) {
         Swal.fire({ icon: 'error', title: 'Out of Stock!', text: 'This product is currently out of stock.' });
@@ -550,20 +542,51 @@ function addToCart(id, name, price, stock) {
     if (existingItem) {
         if (existingItem.qty < stock) {
             existingItem.qty += 1;
+            Swal.fire({
+                icon: 'success',
+                title: 'Quantity Updated',
+                text: name + ' quantity increased.',
+                timer: 900,
+                showConfirmButton: false,
+                position: 'top-end',
+                toast: true
+            });
         } else {
             Swal.fire({ icon: 'warning', title: 'Stock Limit Reached!', text: 'Cannot add more than available stock.' });
             return;
         }
     } else {
         cart.push({ id: id, name: name, price: price, qty: 1, stock: stock });
+        Swal.fire({
+            icon: 'success',
+            title: 'Added to Cart',
+            text: name + ' added successfully.',
+            timer: 900,
+            showConfirmButton: false,
+            position: 'top-end',
+            toast: true
+        });
     }
     renderCart();
 }
 
-// Remove from Cart
+// Remove from Cart with Toast Notification
 function removeFromCart(id) {
-    cart = cart.filter(item => item.id !== id);
+    let item = cart.find(i => i.id === id);
+    let itemName = item ? item.name : 'Item';
+    
+    cart = cart.filter(i => i.id !== id);
     renderCart();
+
+    Swal.fire({
+        icon: 'info',
+        title: 'Removed',
+        text: itemName + ' removed from cart.',
+        timer: 900,
+        showConfirmButton: false,
+        position: 'top-end',
+        toast: true
+    });
 }
 
 function clearCart() {
@@ -575,26 +598,36 @@ function clearCart() {
         text: 'All items will be removed from this order.',
         showCancelButton: true,
         confirmButtonText: 'Clear cart',
-        confirmButtonColor: '#14243d',
+        confirmButtonColor: getComputedStyle(document.body).getPropertyValue('--button-primary').trim() || getComputedStyle(document.body).getPropertyValue('--dark').trim(),
         cancelButtonColor: '#718096'
     }).then((result) => {
         if (result.isConfirmed) {
             cart = [];
             renderCart();
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Cart Cleared',
+                text: 'All items have been cleared from the cart.',
+                timer: 1000,
+                showConfirmButton: false,
+                position: 'top-end',
+                toast: true
+            });
         }
     });
 }
 
-// Render Cart & Totals (Fixed missing operators *)
+// Render Cart & Totals
 function renderCart() {
     let container = document.getElementById('cart-items-container');
     document.getElementById('clear-cart-button').disabled = cart.length === 0;
     
     if (cart.length === 0) {
         container.innerHTML = `
-            <div class="text-center text-muted py-5" id="empty-cart-text">
-                <i class="bi bi-basket fs-2 text-black-50 mb-1 d-block"></i>
-                <p class="small mb-0">Your cart is empty. Click any product or scan barcode to add items.</p>
+            <div class="text-center text-muted py-4" id="empty-cart-text">
+                <i class="bi bi-basket fs-3 text-black-50 mb-1 d-block"></i>
+                <p class="small mb-0" style="font-size: 12px;">Your cart is empty. Click any product or scan barcode.</p>
             </div>`;
         document.getElementById('sub-total').innerText = POS_CURRENCY_SYMBOL + '0.00';
         document.getElementById('tax-amount').innerText = POS_CURRENCY_SYMBOL + '0.00';
@@ -606,19 +639,19 @@ function renderCart() {
     let subtotal = 0;
 
     cart.forEach(item => {
-        let itemTotal = item.price * item.qty; // Fixed missing *
+        let itemTotal = item.price * item.qty;
         subtotal += itemTotal;
 
         html += `
             <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
                 <div style="max-width: 60%;">
                     <h6 class="mb-0 fw-bold text-dark text-truncate small">${item.name}</h6>
-                    <small class="text-muted">${POS_CURRENCY_SYMBOL}${item.price.toFixed(2)} × ${item.qty}</small>
+                    <small class="text-muted" style="font-size: 11px;">${POS_CURRENCY_SYMBOL}${item.price.toFixed(2)} × ${item.qty}</small>
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="fw-bold text-dark small">${POS_CURRENCY_SYMBOL}${itemTotal.toFixed(2)}</span>
-                    <button type="button" class="btn btn-sm btn-outline-danger cart-remove-button" onclick="removeFromCart(${item.id})" title="Delete item" aria-label="Delete item">
-                        <i class="bi bi-trash3" aria-hidden="true"></i>
+                    <button type="button" class="btn btn-sm btn-outline-danger cart-remove-button py-0 px-1" onclick="removeFromCart(${item.id})" title="Delete item" aria-label="Delete item">
+                        <i class="bi bi-trash3" aria-hidden="true" style="font-size: 11px;"></i>
                     </button>
                 </div>
             </div>`;
@@ -646,7 +679,7 @@ function confirmAndCheckout() {
         text: "Are you sure you want to complete this order and generate invoice?",
         icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#14243d',
+        confirmButtonColor: getComputedStyle(document.body).getPropertyValue('--button-primary').trim() || getComputedStyle(document.body).getPropertyValue('--dark').trim(),
         cancelButtonColor: '#d33',
         confirmButtonText: 'Yes, Complete Order!'
     }).then((result) => {
@@ -724,39 +757,29 @@ function executeCheckout() {
         checkoutButton.disabled = false;
     });
 }
+
 let html5QrCode = null;
 
 function openCameraScanner() {
-    // Modal open karein
     let myModal = new bootstrap.Modal(document.getElementById('cameraModal'));
     myModal.show();
 
-    // Camera start karein
     setTimeout(() => {
         html5QrCode = new Html5Qrcode("interactive");
         html5QrCode.start(
-            { facingMode: "environment" }, // Back camera (agar mobile ho) ya default webcam
+            { facingMode: "environment" },
             {
-                fps: 10,    // Frames per second
-                qrbox: { width: 250, height: 150 } // Scanning box size
+                fps: 10,
+                qrbox: { width: 250, height: 150 }
             },
             (decodedText, decodedResult) => {
-                // Jab barcode scan ho jaye
-                console.log(`Scan result: ${decodedText}`);
-                
-                // Input box mein value daal kar Enter trigger karein ya fetch call karein
-                document.getElementById('barcode-scanner-input').value = decodedText;
-                
-                // Camera band karein aur modal close kar dein
+                let cleanText = decodedText.replace(/^sku[:\s]+/i, '').trim();
+                document.getElementById('barcode-scanner-input').value = cleanText;
                 stopCamera();
                 bootstrap.Modal.getInstance(document.getElementById('cameraModal')).hide();
-
-                // Product fetch karne wala function call karein
-                fetchProductByBarcode(decodedText);
+                fetchProductByBarcode(cleanText);
             },
-            (errorMessage) => {
-                // Scanning errors ignore karein jab tak code match na ho
-            }
+            (errorMessage) => {}
         ).catch((err) => {
             console.error("Unable to start scanning.", err);
             Swal.fire({ icon: 'error', title: 'Camera Error', text: 'Could not access camera. Make sure permissions are allowed.' });
@@ -766,17 +789,14 @@ function openCameraScanner() {
 
 function stopCamera() {
     if (html5QrCode) {
-        html5QrCode.stop().then((ignore) => {
-            // Stopped successfully
-        }).catch((err) => {
-            // Stop failed
-        });
+        html5QrCode.stop().then((ignore) => {}).catch((err) => {});
     }
 }
 
-// Product fetch karne ka function jo pehle se use ho raha hai
+// Product fetch by barcode function with clean handling
 function fetchProductByBarcode(barcode) {
-    fetch('get_product_by_barcode.php?barcode=' + encodeURIComponent(barcode))
+    let cleanBarcode = barcode.replace(/^sku[:\s]+/i, '').trim();
+    fetch('get_product_by_barcode.php?barcode=' + encodeURIComponent(cleanBarcode))
         .then(response => response.json())
         .then(data => {
             if (data.status === 'success' && data.product) {
@@ -786,7 +806,7 @@ function fetchProductByBarcode(barcode) {
                 Swal.fire({
                     icon: 'error',
                     title: 'Product Not Found!',
-                    text: 'No product matched with SKU/Barcode: ' + barcode,
+                    text: 'No product matched with SKU/Barcode: ' + cleanBarcode,
                     timer: 1500,
                     showConfirmButton: false
                 });
@@ -801,6 +821,7 @@ function fetchProductByBarcode(barcode) {
     Swal.fire({ icon: 'success', title: 'Success!', text: '<?php echo $_SESSION['swal_success']; ?>', timer: 2000, showConfirmButton: false });
 </script>
 <?php unset($_SESSION['swal_success']); endif; ?>
+
 <!-- Camera Scanner Modal -->
 <div class="modal fade" id="cameraModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -810,7 +831,6 @@ function fetchProductByBarcode(barcode) {
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="stopCamera()"></button>
       </div>
       <div class="modal-body text-center">
-        <!-- Jahan camera ki video show hogi -->
         <div id="interactive" style="width: 100%; max-height: 400px; overflow: hidden; border-radius: 10px;"></div>
         <p class="text-muted small mt-2">Place the barcode in front of your camera.</p>
       </div>
