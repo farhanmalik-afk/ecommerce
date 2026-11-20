@@ -1,6 +1,7 @@
 <?php
 session_start();
 include "../config.php";
+$canCreateSuppliers = appUserCan('suppliers', 'create');
 
 // Create suppliers table if not exists
 @$conn->query("CREATE TABLE IF NOT EXISTS suppliers (
@@ -53,11 +54,11 @@ include "../layouts/header.php";
             <h1>Suppliers Management</h1>
             <p class="text-muted">Manage product vendors and supplier contact details.</p>
         </div>
-        <div>
+        <?php if (appUserCan('inventory')): ?><div>
             <a href="inventory.php" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i> Back to Inventory
             </a>
-        </div>
+        </div><?php endif; ?>
     </section>
 
     <?php if (!empty($error)): ?>
@@ -82,7 +83,7 @@ include "../layouts/header.php";
 
     <div class="row g-4">
         <!-- Add Supplier Form -->
-        <div class="col-lg-4">
+        <?php if ($canCreateSuppliers): ?><div class="col-lg-4">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white py-3">
                     <h6 class="m-0 font-weight-bold text-dark">Add New Supplier</h6>
@@ -110,10 +111,10 @@ include "../layouts/header.php";
                     </form>
                 </div>
             </div>
-        </div>
+        </div><?php endif; ?>
 
         <!-- Suppliers Table -->
-        <div class="col-lg-8">
+        <div class="<?= $canCreateSuppliers ? 'col-lg-8' : 'col-12' ?>">
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <h6 class="m-0 font-weight-bold text-dark">Supplier List</h6>

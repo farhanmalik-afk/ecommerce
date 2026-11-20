@@ -2,6 +2,8 @@
 session_start();
 include "../../config.php";
 require_once __DIR__ . '/order-trash-helper.php';
+$canCreateOrders = appUserCan('orders', 'create');
+$canDeleteOrders = appUserCan('orders', 'delete');
 
 try {
     ensureOrderTrashSchema($conn);
@@ -61,14 +63,18 @@ include "../../layouts/header.php";
             <h1>Orders Management</h1>
             <p class="text-muted mb-0">Track customer purchases, order status, and total revenue.</p>
         </div>
-        <div class="d-flex gap-2">
+        <?php if ($canCreateOrders || appUserCan('dashboard')): ?><div class="d-flex gap-2">
+            <?php if ($canCreateOrders): ?>
             <a href="add-order.php" class="btn btn-dark btn-sm rounded-pill px-3">
                 <i class="bi bi-plus-lg me-1"></i> Add New Order
             </a>
+            <?php endif; ?>
+            <?php if (appUserCan('dashboard')): ?>
             <a href="../../index.php" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
                 <i class="bi bi-house me-1"></i> Dashboard
             </a>
-        </div>
+            <?php endif; ?>
+        </div><?php endif; ?>
     </section>
 
     <div class="card border-0 shadow-sm rounded-4 bg-white mb-4">
@@ -116,7 +122,7 @@ include "../../layouts/header.php";
             </div>
         </div>
 
-        <form method="POST" action="orders.php" id="ordersBulkForm">
+        <?php if ($canDeleteOrders): ?><form method="POST" action="orders.php" id="ordersBulkForm">
         <input type="hidden" name="bulk_delete" value="1">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="d-flex align-items-center gap-2 p-3 pb-0">
@@ -128,11 +134,12 @@ include "../../layouts/header.php";
                 <i class="bi bi-trash me-1"></i> Move Selected to Trash
             </button>
         </div>
+        <?php endif; ?>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0" id="ordersTable">
                 <thead class="table-light text-uppercase fs-7">
                     <tr>
-                        <th class="py-3 ps-3 order-select-column d-none">Select</th>
+                        <?php if ($canDeleteOrders): ?><th class="py-3 ps-3 order-select-column d-none">Select</th><?php endif; ?>
                         <th class="py-3 ps-3" style="width: 8%;">SR #</th>
                         <th class="py-3" style="width: 17%;">Order No</th>
                         <th class="py-3" style="width: 27%;">Customer Name</th>
@@ -224,9 +231,9 @@ include "../../layouts/header.php";
                             elseif ($status === 'Cancelled') $badge_class = 'bg-danger';
                             ?>
                             <tr>
-                                <td class="order-select-column d-none">
+                                <?php if ($canDeleteOrders): ?><td class="order-select-column d-none">
                                     <input type="checkbox" class="form-check-input order-checkbox" name="order_ids[]" value="<?php echo (int)$order['id']; ?>" aria-label="Select order <?php echo htmlspecialchars($display_id, ENT_QUOTES, 'UTF-8'); ?>">
-                                </td>
+                                </td><?php endif; ?>
                                 <td class="ps-3 fw-semibold text-muted"><?php echo $sr++; ?></td>
                                 <td>
                                     <strong><a href="order-details.php?id=<?php echo $order['id']; ?>" class="text-decoration-none text-dark"><?php echo htmlspecialchars($display_id); ?></a></strong>
@@ -258,7 +265,7 @@ include "../../layouts/header.php";
                             <?php
                         }
                     } else {
-                        echo '<tr><td colspan="7" class="text-center py-5 text-muted">
+                        echo '<tr><td colspan="' . ($canDeleteOrders ? '7' : '6') . '" class="text-center py-5 text-muted">
                                 <i class="bi bi-bag-x fs-1 d-block mb-2 opacity-50"></i>
                                 No matching orders found.
                               </td></tr>';
@@ -267,7 +274,7 @@ include "../../layouts/header.php";
                 </tbody>
             </table>
         </div>
-        </form>
+        <?php if ($canDeleteOrders): ?></form><?php endif; ?>
 
         <!-- Professional Pagination Links -->
         <?php if ($total_pages > 1): ?>
@@ -299,6 +306,7 @@ include "../../layouts/header.php";
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+<?php if ($canDeleteOrders): ?>
 const orderCheckboxes = document.querySelectorAll('.order-checkbox');
 const orderSelectColumns = document.querySelectorAll('.order-select-column');
 const toggleOrderSelectionButton = document.getElementById('toggleOrderSelection');
@@ -376,6 +384,7 @@ ordersBulkForm.addEventListener('submit', (event) => {
         ordersBulkForm.submit();
     }
 });
+<?php endif; ?>
 </script>
 <script src="../../assets/js/table-sort.js" defer></script>
 <?php include "../../layouts/footer.php"; ?>

@@ -22,11 +22,11 @@ include "../layouts/header.php";
             <h1>Stock History Logs</h1>
             <p class="text-muted">Audit trail of all inventory additions and deductions.</p>
         </div>
-        <div>
+        <?php if (appUserCan('inventory')): ?><div>
             <a href="inventory.php" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i> Back to Inventory
             </a>
-        </div>
+        </div><?php endif; ?>
     </section>
 
     <div class="card border-0 shadow-sm mb-4">

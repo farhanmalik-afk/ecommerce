@@ -46,11 +46,11 @@ $notificationTypeIcons = [
         <?php endif; ?>
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item">
+                <?php if (appUserCan('dashboard')): ?><li class="breadcrumb-item">
                     <a class="btn btn-sm rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center header-breadcrumb-btn" href="<?= htmlspecialchars($dashboardHref, ENT_QUOTES, 'UTF-8') ?>">
                         <i class="bi bi-house-door-fill me-1"></i>Dashboard
                     </a>
-                </li>
+                </li><?php endif; ?>
                 <li class="breadcrumb-item active" aria-current="page"><?= htmlspecialchars($pageTitle ?? 'Page', ENT_QUOTES, 'UTF-8') ?></li>
             </ol>
         </nav>
@@ -63,7 +63,9 @@ $notificationTypeIcons = [
         <?php endif; ?>
     </div>
     <div class="topbar-tools d-flex align-items-center gap-3">
-        <?php include __DIR__ . '/global-search-control.php'; ?>
+        <?php if (appUserCan('products') || appUserCan('customers') || appUserCan('orders') || appUserCan('categories')): ?>
+            <?php include __DIR__ . '/global-search-control.php'; ?>
+        <?php endif; ?>
         <?php if (appUserCan('settings')): ?><a href="<?= htmlspecialchars($dashboardBase, ENT_QUOTES, 'UTF-8') ?>/settings.php" class="topbar-action" aria-label="Settings" title="Settings"><i class="bi bi-gear"></i></a><?php endif; ?>
         <?php if ($canViewNotifications): ?>
         <div class="dropdown">

@@ -790,27 +790,42 @@ include __DIR__ . '/layouts/header.php';
         'roles' => ['Roles & Permissions', 'bi-shield-check'],
     ];
     $canViewSettingsTab = static function (string $tab): bool {
-        return $tab === 'roles' ? isSuperAdmin() : appUserCan('settings_' . $tab);
+        static $access = [];
+        if (!array_key_exists($tab, $access)) {
+            $access[$tab] = $tab === 'roles'
+                ? (isSuperAdmin() && appUserCan('settings', 'manage'))
+                : appUserCan('settings_' . $tab);
+        }
+        return $access[$tab];
     };
+    $visibleSettingsTabs = [];
+    foreach ($settingsNavigation as $tab => $item) {
+        if ($canViewSettingsTab($tab)) {
+            $visibleSettingsTabs[$tab] = $item;
+        }
+    }
     ?>
 
     <!-- Mobile Category Dropdown Selector -->
+    <?php if ($visibleSettingsTabs): ?>
     <div class="d-lg-none mb-3">
         <label for="mobileSettingsCategory" class="form-label fw-semibold small text-muted">Select Module</label>
         <select id="mobileSettingsCategory" class="form-select fw-semibold" onchange="switchSettingsTab(this.value)">
-            <?php foreach ($settingsNavigation as $tab => [$label, $icon]): ?>
-                <?php if ($canViewSettingsTab($tab)): ?><option value="<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" <?= $activeTab === $tab ? 'selected' : '' ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option><?php endif; ?>
+            <?php foreach ($visibleSettingsTabs as $tab => [$label, $icon]): ?>
+                <option value="<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" <?= $activeTab === $tab ? 'selected' : '' ?>><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></option>
             <?php endforeach; ?>
         </select>
     </div>
+    <?php endif; ?>
 
+    <?php if ($visibleSettingsTabs) { ?>
     <div class="row g-4 settings-row">
         <!-- LEFT SIDE: Sidebar Navigation -->
         <div class="col-lg-3 d-none d-lg-block settings-sidebar-col">
             <div class="settings-sidebar-card p-2">
                 <div class="nav flex-column nav-pills settings-nav-pills gap-1" role="tablist">
-                    <?php foreach ($settingsNavigation as $tab => [$label, $icon]): ?>
-                        <?php if ($canViewSettingsTab($tab)): ?><a href="?tab=<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" data-tab-link="<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" onclick="event.preventDefault(); switchSettingsTab(<?= json_encode($tab) ?>);" class="nav-link <?= $activeTab === $tab ? 'active' : '' ?>"><i class="bi <?= htmlspecialchars($icon, ENT_QUOTES, 'UTF-8') ?>"></i> <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></a><?php endif; ?>
+                    <?php foreach ($visibleSettingsTabs as $tab => [$label, $icon]): ?>
+                        <a href="?tab=<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" data-tab-link="<?= htmlspecialchars($tab, ENT_QUOTES, 'UTF-8') ?>" onclick="event.preventDefault(); switchSettingsTab(<?= json_encode($tab) ?>);" class="nav-link <?= $activeTab === $tab ? 'active' : '' ?>"><i class="bi <?= htmlspecialchars($icon, ENT_QUOTES, 'UTF-8') ?>"></i> <?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></a>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -820,7 +835,7 @@ include __DIR__ . '/layouts/header.php';
         <div class="col-lg-9 settings-content-col">
 
             <!-- 1. GENERAL MODULE -->
-            <div class="settings-pane <?= $activeTab === 'general' ? '' : 'd-none' ?>" id="pane-general">
+            <?php if ($canViewSettingsTab('general')): ?><div class="settings-pane <?= $activeTab === 'general' ? '' : 'd-none' ?>" id="pane-general">
                 <form method="POST" action="settings.php?tab=general" class="settings-content-card" data-module="general">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="general">
@@ -904,13 +919,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Global formatting and translation rules.</span>
-                        <button type="submit" class="btn btn-settings-save">Save General</button>
+                        <?php if (appUserCan('settings_general', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save General</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 2. STORE MODULE -->
-            <div class="settings-pane <?= $activeTab === 'store' ? '' : 'd-none' ?>" id="pane-store">
+            <?php if ($canViewSettingsTab('store')): ?><div class="settings-pane <?= $activeTab === 'store' ? '' : 'd-none' ?>" id="pane-store">
                 <form method="POST" action="settings.php?tab=store" enctype="multipart/form-data" class="settings-content-card" data-module="store">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="store">
@@ -970,13 +986,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Updates invoices and storefront branding.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Store</button>
+                        <?php if (appUserCan('settings_store', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Store</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
            <!-- 3. POS MODULE -->
-<div class="settings-pane <?= $activeTab === 'pos' ? '' : 'd-none' ?>" id="pane-pos">
+<?php if ($canViewSettingsTab('pos')): ?><div class="settings-pane <?= $activeTab === 'pos' ? '' : 'd-none' ?>" id="pane-pos">
     <form method="POST" action="settings.php?tab=pos" class="settings-content-card" data-module="pos">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
         <input type="hidden" name="settings_module" value="pos">
@@ -1052,12 +1069,13 @@ include __DIR__ . '/layouts/header.php';
         </div>
         <div class="settings-card-footer">
             <span class="text-muted small">Controls POS terminal availability and checkout settings.</span>
-            <button type="submit" class="btn btn-settings-save">Save POS</button>
+            <?php if (appUserCan('settings_pos', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save POS</button><?php endif; ?>
         </div>
     </form>
 </div>
+<?php endif; ?>
             <!-- 4. SECURITY MODULE -->
-            <div class="settings-pane <?= $activeTab === 'security' ? '' : 'd-none' ?>" id="pane-security">
+            <?php if ($canViewSettingsTab('security')): ?><div class="settings-pane <?= $activeTab === 'security' ? '' : 'd-none' ?>" id="pane-security">
                 <form method="POST" action="settings.php?tab=security" class="settings-content-card" data-module="security">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="security">
@@ -1098,23 +1116,25 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Protects admin authorization boundaries.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Security</button>
+                        <?php if (appUserCan('settings_security', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Security</button><?php endif; ?>
                     </div>
                 </form>
-                <?php if (isSuperAdmin()): ?>
+                <?php if (isSuperAdmin() && appUserCan('settings', 'manage')): ?>
                     <section class="settings-content-card mt-4">
                         <div class="settings-card-header"><h2>Role Access Management</h2><p>Manage roles, permissions, and module availability in one place.</p></div>
                         <div class="settings-card-body"><a class="btn btn-settings-save" href="settings.php?tab=roles">Open Roles &amp; Permissions</a></div>
                     </section>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
 
-            <div class="settings-pane <?= $activeTab === 'roles' ? '' : 'd-none' ?>" id="pane-roles">
+            <?php if ($canViewSettingsTab('roles')): ?><div class="settings-pane <?= $activeTab === 'roles' ? '' : 'd-none' ?>" id="pane-roles">
                 <?php renderRoleManagementPanel($conn); ?>
             </div>
+            <?php endif; ?>
 
             <!-- 5. SMTP MODULE -->
-            <div class="settings-pane <?= $activeTab === 'smtp' ? '' : 'd-none' ?>" id="pane-smtp">
+            <?php if ($canViewSettingsTab('smtp')): ?><div class="settings-pane <?= $activeTab === 'smtp' ? '' : 'd-none' ?>" id="pane-smtp">
                 <form method="POST" action="settings.php?tab=smtp" class="settings-content-card" data-module="smtp">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="smtp">
@@ -1181,20 +1201,21 @@ include __DIR__ . '/layouts/header.php';
                                     <input type="email" name="test_email_recipient" class="form-control form-control-sm" placeholder="Enter recipient email for live connection test...">
                                 </div>
                                 <div class="col-md-4">
-                                    <button type="submit" name="send_test_email" value="1" class="btn btn-sm btn-outline-dark w-100">Send Test</button>
+                                    <?php if (appUserCan('settings_smtp', 'edit')): ?><button type="submit" name="send_test_email" value="1" class="btn btn-sm btn-outline-dark w-100">Send Test</button><?php endif; ?>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Passwords are never exposed in JavaScript or frontend markup.</span>
-                        <button type="submit" class="btn btn-settings-save">Save SMTP</button>
+                        <?php if (appUserCan('settings_smtp', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save SMTP</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 6. INVOICES MODULE -->
-            <div class="settings-pane <?= $activeTab === 'invoices' ? '' : 'd-none' ?>" id="pane-invoices">
+            <?php if ($canViewSettingsTab('invoices')): ?><div class="settings-pane <?= $activeTab === 'invoices' ? '' : 'd-none' ?>" id="pane-invoices">
                 <form method="POST" action="settings.php?tab=invoices" class="settings-content-card" data-module="invoices">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="invoices">
@@ -1244,13 +1265,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Preserves historical invoice data integrity.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Invoices</button>
+                        <?php if (appUserCan('settings_invoices', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Invoices</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 7. INVENTORY MODULE -->
-            <div class="settings-pane <?= $activeTab === 'inventory' ? '' : 'd-none' ?>" id="pane-inventory">
+            <?php if ($canViewSettingsTab('inventory')): ?><div class="settings-pane <?= $activeTab === 'inventory' ? '' : 'd-none' ?>" id="pane-inventory">
                 <form method="POST" action="settings.php?tab=inventory" class="settings-content-card" data-module="inventory">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="inventory">
@@ -1285,13 +1307,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Does not alter existing stock calculation formulas.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Inventory</button>
+                        <?php if (appUserCan('settings_inventory', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Inventory</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 8. BACKUP MODULE -->
-            <div class="settings-pane <?= $activeTab === 'backup' ? '' : 'd-none' ?>" id="pane-backup">
+            <?php if ($canViewSettingsTab('backup')): ?><div class="settings-pane <?= $activeTab === 'backup' ? '' : 'd-none' ?>" id="pane-backup">
                 <form method="POST" action="settings.php?tab=backup" class="settings-content-card" data-module="backup">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="backup">
@@ -1315,20 +1338,21 @@ include __DIR__ . '/layouts/header.php';
                         <div class="p-3 border rounded-3 bg-light">
                             <h6 class="fw-bold mb-2"><i class="bi bi-database me-1"></i> Manual Database Backup Action</h6>
                             <p class="small text-muted mb-3">Click below to instantly generate and download a secure database export snapshot.</p>
-                            <button type="submit" name="trigger_backup" value="1" class="btn btn-sm btn-dark">
+                            <?php if (appUserCan('settings_backup', 'export')): ?><button type="submit" name="trigger_backup" value="1" class="btn btn-sm btn-dark">
                                 <i class="bi bi-cloud-arrow-down me-1"></i> Create &amp; Download Backup Now
-                            </button>
+                            </button><?php endif; ?>
                         </div>
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Restricted to authorized administrators.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Backup</button>
+                        <?php if (appUserCan('settings_backup', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Backup</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 9. PAYMENTS MODULE -->
-            <div class="settings-pane <?= $activeTab === 'payments' ? '' : 'd-none' ?>" id="pane-payments">
+            <?php if ($canViewSettingsTab('payments')): ?><div class="settings-pane <?= $activeTab === 'payments' ? '' : 'd-none' ?>" id="pane-payments">
                 <form method="POST" action="settings.php?tab=payments" class="settings-content-card" data-module="payments">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="payments">
@@ -1407,13 +1431,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small"><i class="bi bi-shield-lock-fill me-1"></i> Secret keys are protected on the server.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Payments</button>
+                        <?php if (appUserCan('settings_payments', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Payments</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 10. TAX MODULE -->
-            <div class="settings-pane <?= $activeTab === 'tax' ? '' : 'd-none' ?>" id="pane-tax">
+            <?php if ($canViewSettingsTab('tax')): ?><div class="settings-pane <?= $activeTab === 'tax' ? '' : 'd-none' ?>" id="pane-tax">
                 <form method="POST" action="settings.php?tab=tax" class="settings-content-card" data-module="tax">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="tax">
@@ -1449,13 +1474,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Synchronizes directly with `pos_tax_rate`.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Tax</button>
+                        <?php if (appUserCan('settings_tax', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Tax</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 11. NOTIFICATIONS MODULE -->
-            <div class="settings-pane <?= $activeTab === 'notifications' ? '' : 'd-none' ?>" id="pane-notifications">
+            <?php if ($canViewSettingsTab('notifications')): ?><div class="settings-pane <?= $activeTab === 'notifications' ? '' : 'd-none' ?>" id="pane-notifications">
                 <form method="POST" action="settings.php?tab=notifications" class="settings-content-card" data-module="notifications">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="notifications">
@@ -1497,13 +1523,14 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Integrates with SMTP and dashboard topbar bell.</span>
-                        <button type="submit" class="btn btn-settings-save">Save Notifications</button>
+                        <?php if (appUserCan('settings_notifications', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Notifications</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
             <!-- 12. SYSTEM & MAINTENANCE MODULE -->
-            <div class="settings-pane <?= $activeTab === 'system' ? '' : 'd-none' ?>" id="pane-system">
+            <?php if ($canViewSettingsTab('system')): ?><div class="settings-pane <?= $activeTab === 'system' ? '' : 'd-none' ?>" id="pane-system">
                 <form method="POST" action="settings.php?tab=system" class="settings-content-card" data-module="system">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="settings_module" value="system">
@@ -1547,13 +1574,15 @@ include __DIR__ . '/layouts/header.php';
                     </div>
                     <div class="settings-card-footer">
                         <span class="text-muted small">Restricted to authorized administrators.</span>
-                        <button type="submit" class="btn btn-settings-save">Save System</button>
+                        <?php if (appUserCan('settings_system', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save System</button><?php endif; ?>
                     </div>
                 </form>
             </div>
+            <?php endif; ?>
 
         </div>
     </div>
+    <?php } ?>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

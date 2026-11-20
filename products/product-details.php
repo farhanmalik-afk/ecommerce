@@ -89,7 +89,7 @@ include __DIR__ . '/../layouts/header.php';
 
     <!-- Action Buttons -->
     <div class="mt-4">
-        <a href="edit-product.php?id=<?php echo $product['id']; ?>" class="btn btn-dark">Edit Product</a>
+        <?php if (appUserCan('products', 'edit')): ?><a href="edit-product.php?id=<?php echo $product['id']; ?>" class="btn btn-dark">Edit Product</a><?php endif; ?>
         <a href="products.php" class="btn btn-outline-secondary ms-2">Back to List</a>
     </div>
 </div>

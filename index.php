@@ -12,6 +12,8 @@ $canViewProducts = appUserCan('products');
 $canViewCustomers = appUserCan('customers');
 $canViewOrders = appUserCan('orders');
 $canViewInventory = appUserCan('inventory');
+$canCreateOrders = appUserCan('orders', 'create');
+$canAdjustStock = appUserCan('stock_management', 'edit');
 
 // Fetch Dynamic Stats from Database
 $total_products = 0;
@@ -79,16 +81,17 @@ if (isset($appSettings['maintenance_mode']) && $appSettings['maintenance_mode'] 
 $pageTitle = $langData['dashboard'] . ' - ' . $storeName;
 include "layouts/header.php";
 ?>
-<div class="app-main dashboard-main">
+<div class="dashboard-main">
     <!-- Topbar & Page Heading -->
-    <section class="page-head mb-4 d-flex justify-content-between align-items-center">
+    <section class="page-head mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
             <span class="badge bg-warning text-dark mb-1"><?= htmlspecialchars($storeName) ?></span>
             <h1><?= htmlspecialchars($langData['dashboard']) ?></h1>
             <p class="text-muted"><?= htmlspecialchars($langData['dashboard_sub']) ?></p>
         </div>
-        <div class="d-flex gap-2">
-            <?php if (hasPermission($conn, getCurrentAdminId(), 'orders', 'create')): ?>
+        <?php if ($canCreateOrders || $canViewInventory): ?>
+        <div class="d-flex flex-wrap gap-2">
+            <?php if ($canCreateOrders): ?>
             <a href="sales/orders/add-order.php" class="btn btn-outline-dark btn-sm">
                 <i class="bi bi-plus-lg me-1"></i> <?= htmlspecialchars($langData['add_order']) ?>
             </a>
@@ -99,9 +102,11 @@ include "layouts/header.php";
             </a>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
     </section>
 
     <!-- Stat Cards Row -->
+    <?php if ($canViewProducts || $canViewCustomers || $canViewInventory): ?>
     <div class="row g-3 mb-4 dashboard-stats">
         <!-- Total Products Card -->
         <?php if ($canViewProducts): ?>
@@ -152,7 +157,6 @@ include "layouts/header.php";
                         <p class="stat-label"><?= htmlspecialchars($langData['total_stock_units']) ?></p>
                         <h3 class="stat-value"><?php echo number_format($total_inventory_items); ?></h3>
                     </div>
-                    <?php endif; ?>
                     <div class="stat-icon bg-a">
                         <i class="bi bi-boxes"></i>
                     </div>
@@ -162,7 +166,9 @@ include "layouts/header.php";
                 </div>
             </div>
         </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- Order Summary Cards -->
     <?php if ($canViewOrders): ?>
@@ -175,7 +181,6 @@ include "layouts/header.php";
                         <p class="stat-label"><?= htmlspecialchars($langData['total_orders']) ?></p>
                         <h3 class="stat-value"><?php echo number_format($total_orders); ?></h3>
                     </div>
-                    <?php endif; ?>
                     <div class="stat-icon bg-a">
                         <i class="bi bi-cart-fill"></i>
                     </div>
@@ -204,12 +209,14 @@ include "layouts/header.php";
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Data Tables Row (Products & Customers) -->
+    <?php if ($canViewProducts || $canViewCustomers): ?>
     <div class="row g-4 mb-4">
         <!-- Recent Products Table -->
         <?php if ($canViewProducts): ?>
-        <div class="col-lg-7">
+        <div class="<?= $canViewCustomers ? 'col-lg-7' : 'col-lg-6 offset-lg-3' ?>">
             <div class="card border-0 shadow-sm table-card dashboard-panel">
                 <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
                     <h6 class="m-0 font-weight-bold"><?= htmlspecialchars($langData['recent_products']) ?></h6>
@@ -265,7 +272,7 @@ include "layouts/header.php";
 
         <!-- Recent Customers Table -->
         <?php if ($canViewCustomers): ?>
-        <div class="col-lg-5">
+        <div class="<?= $canViewProducts ? 'col-lg-5' : 'col-lg-6 offset-lg-3' ?>">
             <div class="card border-0 shadow-sm table-card dashboard-panel">
                 <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
                     <h6 class="m-0 font-weight-bold"><?= htmlspecialchars($langData['recent_customers']) ?></h6>
@@ -308,12 +315,14 @@ include "layouts/header.php";
                         </tbody>
                     </table>
                 </div>
-                <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <!-- Inventory Overview & Recent Orders Row -->
+    <?php if ($canViewInventory || $canViewOrders): ?>
     <div class="row g-4 mb-4">
         <!-- Low Stock Alert / Inventory Quick View -->
         <?php if ($canViewInventory): ?>
@@ -329,7 +338,7 @@ include "layouts/header.php";
                             <tr>
                                 <th class="ps-3">Product Name</th>
                                 <th>Quantity</th>
-                                <th class="text-end pe-3">Action</th>
+                                <?php if ($canAdjustStock): ?><th class="text-end pe-3">Action</th><?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
@@ -345,14 +354,14 @@ include "layouts/header.php";
                                     <tr>
                                         <td class="ps-3 fw-bold"><?php echo htmlspecialchars($ls['name']); ?></td>
                                         <td><span class="badge bg-danger"><?php echo $ls['quantity']; ?> units</span></td>
-                                        <td class="text-end pe-3">
+                                        <?php if ($canAdjustStock): ?><td class="text-end pe-3">
                                             <a href="inventory/stock-adjust.php?product_id=<?php echo $ls['product_id']; ?>" class="btn btn-sm btn-dark py-0 px-2" style="font-size: 11px;">Restock</a>
-                                        </td>
+                                        </td><?php endif; ?>
                                     </tr>
                                     <?php
                                 }
                             } else {
-                                echo "<tr><td colspan='3' class='text-center text-muted py-3'>All products have sufficient stock!</td></tr>";
+                                echo "<tr><td colspan='" . ($canAdjustStock ? '3' : '2') . "' class='text-center text-muted py-3'>All products have sufficient stock!</td></tr>";
                             }
                             ?>
                         </tbody>
@@ -370,7 +379,6 @@ include "layouts/header.php";
                     <h6 class="m-0 font-weight-bold text-dark"><?= htmlspecialchars($langData['recent_orders']) ?></h6>
                     <a href="sales/orders/orders.php" class="btn btn-sm btn-outline-secondary"><?= htmlspecialchars($langData['view_all']) ?></a>
                 </div>
-                <?php endif; ?>
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
                         <thead>
@@ -419,7 +427,9 @@ include "layouts/header.php";
                 </div>
             </div>
         </div>
+        <?php endif; ?>
     </div>
+    <?php endif; ?>
 </div>
 
 <?php 

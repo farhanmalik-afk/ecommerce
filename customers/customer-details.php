@@ -79,10 +79,12 @@ $block_icon = ($status == 'Active') ? 'bi-slash-circle' : 'bi-check-circle';
       <!-- Professional Buttons Group -->
       <div class="d-flex flex-wrap gap-2">
         <a href="customers.php" class="btn btn-outline-dark"><i class="bi bi-arrow-left me-1"></i>Back</a>
-        <a href="edit-customer.php?id=<?php echo $customer['id']; ?>" class="btn btn-dark"><i class="bi bi-pencil-square me-1"></i>Edit Customer</a><!-- Send Email Button with Dark Styling -->
+        <?php if (appUserCan('customers', 'edit')): ?><a href="edit-customer.php?id=<?php echo $customer['id']; ?>" class="btn btn-dark"><i class="bi bi-pencil-square me-1"></i>Edit Customer</a><?php endif; ?>
+        <?php if (appUserCan('customers', 'edit')): ?>
 <button type="button" id="sendCredentialsButton" onclick="confirmSendEmail(<?php echo (int) $customer_id; ?>)" class="btn btn-dark">
     <i class="bi bi-envelope me-1"></i> Send email
 </button>
+        <?php endif; ?>
 
 <script>
 const credentialEmailCsrf = <?= json_encode($credentialEmailCsrf, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
@@ -160,9 +162,9 @@ function confirmSendEmail(id) {
           <p class="text-muted mb-0"><?php echo htmlspecialchars($email); ?></p>
         </div>
         <span class="status <?php echo $status_badge_class; ?>"><?php echo $status; ?></span>
-        <button type="button" class="btn <?php echo $block_btn_class; ?>" onclick="confirmStatusChange(<?php echo $customer['id']; ?>, '<?php echo $status; ?>')">
+        <?php if (appUserCan('customers', 'edit')): ?><button type="button" class="btn <?php echo $block_btn_class; ?>" onclick="confirmStatusChange(<?php echo $customer['id']; ?>, '<?php echo $status; ?>')">
           <i class="bi <?php echo $block_icon; ?> me-1"></i><?php echo $block_btn_text; ?>
-        </button>
+        </button><?php endif; ?>
       </div>
     </section>
 

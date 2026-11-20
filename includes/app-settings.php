@@ -26,7 +26,7 @@ function ensureAppSettingsSchema(mysqli $conn): void
 
 function appPermissionDefinitions(): array
 {
-    $actions = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'delete' => 'Delete', 'export' => 'Export', 'manage' => 'Manage'];
+    $actions = ['view' => 'View', 'create' => 'Create', 'edit' => 'Edit', 'delete' => 'Delete', 'restore' => 'Restore', 'export' => 'Export', 'manage' => 'Manage'];
     $modules = [
         'dashboard' => 'Dashboard',
         'customers' => 'Customers',

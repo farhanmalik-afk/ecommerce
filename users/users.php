@@ -5,6 +5,10 @@ require_once "../config.php";
 require_once "../includes/rbac.php";
 
 enforceAccess($conn, 'user_management', 'view');
+$canCreateUsers = appUserCan('user_management', 'create');
+$canEditUsers = appUserCan('user_management', 'edit');
+$canDeleteUsers = appUserCan('user_management', 'delete');
+$showUserActions = $canEditUsers || $canDeleteUsers;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
     $targetId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
@@ -108,21 +112,21 @@ include "../layouts/header.php";
             <h1>User Management</h1>
             <p class="text-muted">Manage system users, assign roles, and control account statuses.</p>
         </div>
-        <div>
+        <?php if ($canCreateUsers): ?><div>
             <a href="add-user.php" class="header-pos-btn btn btn-dark btn-sm">
                 <i class="bi bi-person-plus-fill me-1"></i> Add New User
             </a>
-        </div>
+        </div><?php endif; ?>
     </section>
 
     <div class="card border-0 shadow-sm table-card dashboard-panel">
         <div class="table-card-header p-3 border-bottom bg-white d-flex justify-content-between align-items-center flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2">
                 <span class="fw-bold text-dark">Registered Users List</span>
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleUserSelection" aria-label="Enable user selection" aria-pressed="false" title="Enable user selection">
+                <?php if ($canDeleteUsers): ?><button type="button" class="btn btn-outline-secondary btn-sm" id="toggleUserSelection" aria-label="Enable user selection" aria-pressed="false" title="Enable user selection">
                     <i class="bi bi-check-square"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllUsers">Select All</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllUsers">Select All</button><?php endif; ?>
             </div>
 
             <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -167,13 +171,13 @@ include "../layouts/header.php";
             <table class="table data-table align-middle mb-0" id="usersTable">
                 <thead>
                     <tr>
-                        <th class="ps-3 user-select-column d-none" style="width: 50px;">Select</th>
+                        <?php if ($canDeleteUsers): ?><th class="ps-3 user-select-column d-none" style="width: 50px;">Select</th><?php endif; ?>
                         <th class="ps-3" style="width: 70px;">#</th>
                         <th>User</th>
                         <th>Email</th>
                         <th>Role</th>
                         <th>Status</th>
-                        <th class="text-end pe-3">Actions</th>
+                        <?php if ($showUserActions): ?><th class="text-end pe-3">Actions</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -184,9 +188,9 @@ include "../layouts/header.php";
                             $badgeClass = ($user['status'] == 'Active') ? 'bg-success' : 'bg-secondary';
                             ?>
                             <tr>
-                                <td class="ps-3 user-select-column d-none">
+                                <?php if ($canDeleteUsers): ?><td class="ps-3 user-select-column d-none">
                                     <input type="checkbox" name="user_ids[]" value="<?php echo $user['id']; ?>" class="form-check-input user-checkbox m-0" aria-label="Select user">
-                                </td>
+                                </td><?php endif; ?>
                                 <td class="ps-3">
                                     <span class="text-muted fw-semibold" style="font-size: 0.85rem;"><?php echo $counter; ?></span>
                                 </td>
@@ -213,17 +217,17 @@ include "../layouts/header.php";
                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                 <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
                                 <td><span class="badge <?php echo $badgeClass; ?>"><?php echo htmlspecialchars($user['status']); ?></span></td>
-                                <td class="text-end pe-3">
+                                <?php if ($showUserActions): ?><td class="text-end pe-3">
                                     <?php if (strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
-                                        <?php if ((int) $user['id'] !== getCurrentAdminId()): ?>
+                                        <?php if ($canEditUsers && (int) $user['id'] !== getCurrentAdminId()): ?>
                                             <button type="button" onclick="confirmUserStatusChange(<?php echo (int)$user['id']; ?>, '<?php echo htmlspecialchars($user['status'], ENT_QUOTES); ?>')" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></button>
                                         <?php endif; ?>
-                                        <a href="edit-user.php?id=<?php echo (int) $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a>
+                                        <?php if ($canEditUsers): ?><a href="edit-user.php?id=<?php echo (int) $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a><?php endif; ?>
                                     <?php endif; ?>
-                                    <?php if ($user['id'] != getCurrentAdminId() && strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
+                                    <?php if ($canDeleteUsers && $user['id'] != getCurrentAdminId() && strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
                                         <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="confirmUserDelete(<?php echo (int) $user['id']; ?>, this.dataset.name)" data-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>" title="Move to Trash"><i class="bi bi-trash"></i></button>
                                     <?php endif; ?>
-                                </td>
+                                </td><?php endif; ?>
                             </tr>
                             <?php
                             if ($sortOrder === 'ASC') {
@@ -233,7 +237,7 @@ include "../layouts/header.php";
                             }
                         }
                     } else {
-                        echo "<tr><td colspan='7' class='text-center text-muted py-3'>No users found.</td></tr>";
+                        echo "<tr><td colspan='" . ($showUserActions ? ($canDeleteUsers ? '7' : '6') : ($canDeleteUsers ? '6' : '5')) . "' class='text-center text-muted py-3'>No users found.</td></tr>";
                     }
                     ?>
                 </tbody>

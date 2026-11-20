@@ -40,6 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'
 }
 
 $search = trim($_GET['search'] ?? '');
+$canCreateCategories = appUserCan('categories', 'create');
+$canEditCategories = appUserCan('categories', 'edit');
+$canDeleteCategories = appUserCan('categories', 'delete');
+$showCategoryActions = $canEditCategories || $canDeleteCategories;
 $pageTitle = 'Categories';
 ?>
 <!DOCTYPE html>
@@ -93,7 +97,7 @@ $pageTitle = 'Categories';
         <div class="card table-card border-0 shadow-sm">
           <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
             <h6 class="card-title mb-0 fw-bold">All Categories</h6>
-            <a href="add-category.php" class="btn btn-dark"><i class="bi bi-plus-lg me-1"></i>Add Category</a>
+            <?php if ($canCreateCategories): ?><a href="add-category.php" class="btn btn-dark"><i class="bi bi-plus-lg me-1"></i>Add Category</a><?php endif; ?>
           </div>
 
           <div class="table-responsive">
@@ -105,7 +109,7 @@ $pageTitle = 'Categories';
                   <th>Description</th>
                   <th>Status</th>
                   <th>Created Date</th>
-                  <th class="text-end pe-4">Action</th>
+                  <?php if ($showCategoryActions): ?><th class="text-end pe-4">Action</th><?php endif; ?>
                 </tr>
               </thead>
               <tbody>
@@ -139,16 +143,22 @@ $pageTitle = 'Categories';
                                 <td><strong>" . htmlspecialchars($row['name']) . "</strong></td>
                                 <td class='text-muted'>" . htmlspecialchars($row['description'] ?? 'N/A') . "</td>
                                 <td><span class='badge {$status_badge}'>{$status}</span></td>
-                                <td><small class='text-muted'>{$date}</small></td>
-                                <td class='text-end pe-4'>
-                                  <a href='edit-category.php?id=" . $row['id'] . "' class='text-secondary me-2' title='Edit'><i class='bi bi-pencil-square'></i></a>
-                                  <a href='#' onclick='confirmStatusChange(" . $row['id'] . ", \"" . $status . "\")' class='text-warning me-2' title='Toggle Status'><i class='bi bi-slash-circle'></i></a>
-                                  <a href='#' onclick='confirmDelete(" . $row['id'] . ")' class='text-danger' title='Delete'><i class='bi bi-trash'></i></a>
-                                </td>
-                              </tr>";
+                                <td><small class='text-muted'>{$date}</small></td>";
+                        if ($showCategoryActions) {
+                            echo "<td class='text-end pe-4'>";
+                            if ($canEditCategories) {
+                                echo "<a href='edit-category.php?id=" . (int) $row['id'] . "' class='text-secondary me-2' title='Edit'><i class='bi bi-pencil-square'></i></a>
+                                      <a href='#' onclick='confirmStatusChange(" . (int) $row['id'] . ", \"" . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . "\")' class='text-warning me-2' title='Toggle Status'><i class='bi bi-slash-circle'></i></a>";
+                            }
+                            if ($canDeleteCategories) {
+                                echo "<a href='#' onclick='confirmDelete(" . (int) $row['id'] . ")' class='text-danger' title='Delete'><i class='bi bi-trash'></i></a>";
+                            }
+                            echo "</td>";
+                        }
+                        echo "</tr>";
                     }
                 } else {
-                    echo "<tr><td colspan='6' class='text-center text-muted py-4'>No categories found.</td></tr>";
+                    echo "<tr><td colspan='" . ($showCategoryActions ? '6' : '5') . "' class='text-center text-muted py-4'>No categories found.</td></tr>";
                 }
                 ?>
               </tbody>

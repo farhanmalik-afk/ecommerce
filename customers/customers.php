@@ -5,6 +5,10 @@ session_start();
 // Database connection include karein
 include "../config.php";
 
+$canCreateCustomers = appUserCan('customers', 'create');
+$canEditCustomers = appUserCan('customers', 'edit');
+$canDeleteCustomers = appUserCan('customers', 'delete');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
         http_response_code(403);
@@ -173,9 +177,9 @@ $pageTitle = 'Customers';
         <div class="card table-card border-0 shadow-sm">
           <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom bg-white">
             <div class="d-flex align-items-center gap-2"><h6 class="card-title mb-0 fw-bold"><?= htmlspecialchars($langData['registered_customers'] ?? 'Registered Customers List') ?></h6>
-              <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleCustomerSelection" aria-label="Enable customer selection" aria-pressed="false" title="Enable customer selection"><i class="bi bi-check-square"></i></button>
+              <?php if ($canDeleteCustomers): ?><button type="button" class="btn btn-outline-secondary btn-sm" id="toggleCustomerSelection" aria-label="Enable customer selection" aria-pressed="false" title="Enable customer selection"><i class="bi bi-check-square"></i></button>
               <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllCustomers">Select All</button>
-              <button type="submit" form="customersBulkForm" class="btn btn-danger btn-sm d-none" id="moveCustomersToTrash" disabled><i class="bi bi-trash me-1"></i>Move Selected to Trash</button>
+              <button type="submit" form="customersBulkForm" class="btn btn-danger btn-sm d-none" id="moveCustomersToTrash" disabled><i class="bi bi-trash me-1"></i>Move Selected to Trash</button><?php endif; ?>
             </div>
             <div class="d-flex align-items-center gap-3 flex-wrap justify-content-end">
               <form method="GET" action="customers.php" class="d-flex align-items-center gap-2 mb-0">
@@ -193,19 +197,20 @@ $pageTitle = 'Customers';
               <button type="button" class="table-sort-toggle" data-sort-toggle data-sort-target="customersTable" aria-label="Sort Ascending" title="Sort Ascending" aria-pressed="false">
                 <i class="bi bi-sort-up-alt" aria-hidden="true"></i>
               </button>
-              <a href="add-customers.php" class="btn btn-dark"><i class="bi bi-plus-lg me-1"></i>Add Customer</a>
+              <?php if ($canCreateCustomers): ?><a href="add-customers.php" class="btn btn-dark"><i class="bi bi-plus-lg me-1"></i>Add Customer</a><?php endif; ?>
             </div>
           </div>
 
-          <form method="POST" action="customers.php" id="customersBulkForm">
+          <?php if ($canDeleteCustomers): ?><form method="POST" action="customers.php" id="customersBulkForm">
           <input type="hidden" name="bulk_delete" value="1">
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+          <?php endif; ?>
           <div class="table-responsive customer-list-responsive">
             <table class="table data-table align-middle mb-0" id="customersTable">
               <thead class="table-light">
                 <tr>
                   <!-- Select column added in header with d-none -->
-                  <th class="customer-select-column d-none">Select</th>
+                  <?php if ($canDeleteCustomers): ?><th class="customer-select-column d-none">Select</th><?php endif; ?>
                   <th class="customer-number-heading">#</th>
                   <th class="customer-name-heading">Customer</th>
                   <th class="customer-group-column">Group</th>
@@ -328,7 +333,7 @@ $pageTitle = 'Customers';
                         $customer_avatar = "<img src='{$cust_img_path}' width='40' height='40' class='rounded-circle border object-fit-cover'>";
 
                         echo "<tr>
-                                <td class='customer-select-column d-none'><input type='checkbox' class='form-check-input customer-checkbox' name='customer_ids[]' value='" . (int)$row['id'] . "' aria-label='Select customer'></td>
+                                " . ($canDeleteCustomers ? "<td class='customer-select-column d-none'><input type='checkbox' class='form-check-input customer-checkbox' name='customer_ids[]' value='" . (int)$row['id'] . "' aria-label='Select customer'></td>" : "") . "
                                 <td class='customer-number-cell'>" . $row_number++ . "</td>
                                 <td class='customer-name-cell'>
                                   <div class='d-flex align-items-center gap-3'>
@@ -344,20 +349,20 @@ $pageTitle = 'Customers';
                                 <td><span class='badge {$status_badge}'>{$status}</span></td>
                                 <td class='text-end pe-4'>
                                   <a href='customer-details.php?id=" . $row['id'] . "' class='text-info me-2' title='View Details'><i class='bi bi-eye'></i></a>
-                                  <a href='#' onclick='confirmStatusChange(" . $row['id'] . ", \"" . $status . "\")' class='text-warning me-2' title='Toggle Status'><i class='bi bi-slash-circle'></i></a>
-                                  <a href='edit-customer.php?id=" . $row['id'] . "' class='text-secondary me-2' title='Edit'><i class='bi bi-pencil-square'></i></a>
-                                  <a href='#' onclick='confirmDelete(" . $row['id'] . ")' class='text-danger' title='Delete'><i class='bi bi-trash'></i></a>
+                                  " . ($canEditCustomers ? "<a href='#' onclick='confirmStatusChange(" . (int) $row['id'] . ", \"" . htmlspecialchars($status, ENT_QUOTES, 'UTF-8') . "\")' class='text-warning me-2' title='Toggle Status'><i class='bi bi-slash-circle'></i></a>
+                                  <a href='edit-customer.php?id=" . (int) $row['id'] . "' class='text-secondary me-2' title='Edit'><i class='bi bi-pencil-square'></i></a>" : "") . "
+                                  " . ($canDeleteCustomers ? "<a href='#' onclick='confirmDelete(" . (int) $row['id'] . ")' class='text-danger' title='Delete'><i class='bi bi-trash'></i></a>" : "") . "
                                 </td>
                               </tr>";
                     }
                 } else {
-                    echo "<tr><td colspan='7' class='text-center text-muted py-4'>No customers found.</td></tr>";
+                    echo "<tr><td colspan='" . ($canDeleteCustomers ? '7' : '6') . "' class='text-center text-muted py-4'>No customers found.</td></tr>";
                 }
                 ?>
               </tbody>
             </table>
           </div>
-          </form>
+          <?php if ($canDeleteCustomers): ?></form><?php endif; ?>
           <?php if ($total_pages > 1): ?>
             <nav aria-label="Customers pagination" class="p-3">
               <ul class="pagination justify-content-end mb-0">
@@ -415,6 +420,7 @@ function confirmDelete(id) {
     });
 }
 
+<?php if ($canDeleteCustomers): ?>
 const toggleCustomerSelectionButton = document.getElementById('toggleCustomerSelection');
 const selectAllCustomersButton = document.getElementById('selectAllCustomers');
 const moveCustomersToTrashButton = document.getElementById('moveCustomersToTrash');
@@ -495,6 +501,7 @@ customersBulkForm.addEventListener('submit', (event) => {
         }
     });
 });
+<?php endif; ?>
 
 function confirmStatusChange(id, currentStatus) {
     let targetStatus = (currentStatus === 'Active') ? 'Inactive' : 'Active';

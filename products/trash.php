@@ -9,6 +9,14 @@ $requestedTrashType = $_GET['type'] ?? 'products';
 $trashType = is_string($requestedTrashType) && in_array($requestedTrashType, ['products', 'orders', 'customers', 'notifications', 'users'], true)
     ? $requestedTrashType
     : 'products';
+$trashPermissions = [
+    'products' => ['view' => appUserCan('products'), 'restore' => appUserCan('products', 'restore'), 'delete' => appUserCan('products', 'delete')],
+    'orders' => ['view' => appUserCan('orders'), 'restore' => appUserCan('orders', 'restore'), 'delete' => appUserCan('orders', 'delete')],
+    'customers' => ['view' => appUserCan('customers'), 'restore' => appUserCan('customers', 'restore'), 'delete' => appUserCan('customers', 'delete')],
+    'notifications' => ['view' => appUserCan('notifications'), 'restore' => appUserCan('notifications', 'restore'), 'delete' => appUserCan('notifications', 'delete')],
+    'users' => ['view' => appUserCan('user_management'), 'restore' => appUserCan('user_management', 'restore'), 'delete' => appUserCan('user_management', 'delete')],
+];
+$showTrashActions = $trashPermissions[$trashType]['restore'] || $trashPermissions[$trashType]['delete'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !verifyCsrfToken($_POST['csrf_token'] ?? null)) {
     http_response_code(403);
@@ -441,21 +449,21 @@ include __DIR__ . '/../layouts/header.php';
                 </p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
-                <a href="trash.php?type=products" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'products' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
+                <?php if ($trashPermissions['products']['view']): ?><a href="trash.php?type=products" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'products' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-box-seam me-1"></i> Products
-                </a>
-                <a href="trash.php?type=orders" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'orders' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
+                </a><?php endif; ?>
+                <?php if ($trashPermissions['orders']['view']): ?><a href="trash.php?type=orders" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'orders' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-bag-check me-1"></i> Orders
-                </a>
-                <a href="trash.php?type=customers" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'customers' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
+                </a><?php endif; ?>
+                <?php if ($trashPermissions['customers']['view']): ?><a href="trash.php?type=customers" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'customers' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-people me-1"></i> Customers
-                </a>
-                <a href="trash.php?type=notifications" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'notifications' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
+                </a><?php endif; ?>
+                <?php if ($trashPermissions['notifications']['view']): ?><a href="trash.php?type=notifications" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'notifications' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-bell me-1"></i> Notifications
-                </a>
-                <a href="trash.php?type=users" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'users' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
+                </a><?php endif; ?>
+                <?php if ($trashPermissions['users']['view']): ?><a href="trash.php?type=users" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'users' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-person-fill me-1"></i> Users
-                </a>
+                </a><?php endif; ?>
                 <a href="<?php echo $trashType === 'orders' ? '../sales/orders/orders.php' : ($trashType === 'customers' ? '../customers/customers.php' : ($trashType === 'notifications' ? '../notifications.php' : ($trashType === 'users' ? 'users.php' : 'products.php'))); ?>" class="btn btn-outline-dark btn-sm rounded-pill px-3">
                     <i class="bi bi-arrow-left me-1"></i> Back
                 </a>
@@ -468,7 +476,7 @@ include __DIR__ . '/../layouts/header.php';
             <input type="hidden" name="product_action" id="singleProductTrashAction">
             <input type="hidden" name="product_id" id="singleProductTrashId">
             <input type="hidden" name="bulk_action" id="bulkAction">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <?php if ($showTrashActions): ?><div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleTrashSelection" aria-label="Enable product selection" aria-pressed="false" title="Enable product selection">
                         <i class="bi bi-check-square"></i>
@@ -476,23 +484,24 @@ include __DIR__ . '/../layouts/header.php';
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllTrashProducts">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" id="recoverSelectedButton" disabled>
+                    <?php if ($trashPermissions['products']['restore']): ?><button type="button" class="btn btn-success btn-sm d-none" id="recoverSelectedButton" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedButton" disabled>
+                    </button><?php endif; ?>
+                    <?php if ($trashPermissions['products']['delete']): ?><button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedButton" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Selected Forever
-                    </button>
+                    </button><?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
-                            <th class="py-3 ps-3 trash-select-column d-none">Select</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 ps-3 trash-select-column d-none">Select</th><?php endif; ?>
                             <th class="py-3 ps-3">Product Name</th>
                             <th class="py-3">Category</th>
                             <th class="py-3">Price</th>
-                            <th class="py-3 text-end pe-3">Actions</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 text-end pe-3">Actions</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -514,10 +523,10 @@ include __DIR__ . '/../layouts/header.php';
                                 }
                             }
                             ?>
-                            <tr class="trash-row-item" style="cursor: pointer;">
-                                <td class="py-3 ps-3 trash-select-column d-none">
+                            <tr class="trash-row-item"<?= $showTrashActions ? ' style="cursor: pointer;"' : '' ?>>
+                                <?php if ($showTrashActions): ?><td class="py-3 ps-3 trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trash-product-checkbox" name="product_ids[]" value="<?= (int)$row['id'] ?>" aria-label="Select <?= htmlspecialchars($row['name'] ?? 'product', ENT_QUOTES, 'UTF-8') ?>">
-                                </td>
+                                </td><?php endif; ?>
                                 <td class="ps-3 fw-semibold text-dark">
                                     <div class="d-flex align-items-center gap-2">
                                         <img src="<?= htmlspecialchars($img_path, ENT_QUOTES, 'UTF-8') ?>" alt="" style="width: 38px; height: 38px; object-fit: cover; border-radius: 8px;" class="border">
@@ -526,19 +535,19 @@ include __DIR__ . '/../layouts/header.php';
                                 </td>
                                 <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($row['category_name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></span></td>
                                 <td><strong><?= htmlspecialchars(formatAppCurrency($row['price'] ?? 0), ENT_QUOTES, 'UTF-8') ?></strong></td>
-                                <td class="text-end pe-3" onclick="event.stopPropagation();">
-                                    <button type="button" onclick="confirmRecover(<?= $row['id'] ?>)" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" title="Restore Product">
+                                <?php if ($showTrashActions): ?><td class="text-end pe-3" onclick="event.stopPropagation();">
+                                    <?php if ($trashPermissions['products']['restore']): ?><button type="button" onclick="confirmRecover(<?= $row['id'] ?>)" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" title="Restore Product">
                                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
-                                    </button>
-                                    <button type="button" onclick="confirmPermDelete(<?= $row['id'] ?>)" class="btn btn-sm btn-outline-danger rounded-pill px-3" title="Delete Forever">
+                                    </button><?php endif; ?>
+                                    <?php if ($trashPermissions['products']['delete']): ?><button type="button" onclick="confirmPermDelete(<?= $row['id'] ?>)" class="btn btn-sm btn-outline-danger rounded-pill px-3" title="Delete Forever">
                                         <i class="bi bi-trash me-1"></i> Delete Forever
-                                    </button>
-                                </td>
+                                    </button><?php endif; ?>
+                                </td><?php endif; ?>
                             </tr>
                             <?php
                         }
                     } else {
-                        echo '<tr><td colspan="5" class="text-center py-5 text-muted">
+                        echo '<tr><td colspan="' . ($showTrashActions ? '5' : '3') . '" class="text-center py-5 text-muted">
                                 <i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>
                                 Trash bin bilkul khali hai!
                               </td></tr>';
@@ -554,7 +563,7 @@ include __DIR__ . '/../layouts/header.php';
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
             <input type="hidden" name="bulk_action" id="orderTrashBulkAction">
             <input type="hidden" name="single_order_id" id="singleTrashedOrderId">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <?php if ($showTrashActions): ?><div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleOrderTrashSelection" aria-label="Enable order selection" aria-pressed="false" title="Enable order selection">
                         <i class="bi bi-check-square"></i>
@@ -562,25 +571,26 @@ include __DIR__ . '/../layouts/header.php';
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllTrashedOrders">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedOrders" disabled>
+                    <?php if ($trashPermissions['orders']['restore']): ?><button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedOrders" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedOrders" disabled>
+                    </button><?php endif; ?>
+                    <?php if ($trashPermissions['orders']['delete']): ?><button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedOrders" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Selected Forever
-                    </button>
+                    </button><?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
-                            <th class="py-3 ps-3 order-trash-select-column d-none">Select</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 ps-3 order-trash-select-column d-none">Select</th><?php endif; ?>
                             <th class="py-3">Order No</th>
                             <th class="py-3">Customer</th>
                             <th class="py-3">Total</th>
                             <th class="py-3">Status</th>
                             <th class="py-3">Order Date</th>
-                            <th class="py-3 text-end pe-3">Actions</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 text-end pe-3">Actions</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
@@ -588,28 +598,28 @@ include __DIR__ . '/../layouts/header.php';
                             <?php while ($order = $ordersResult->fetch_assoc()):
                                 $displayOrderNo = $order['order_no'] ?: '#ORD-' . str_pad((string)$order['id'], 4, '0', STR_PAD_LEFT);
                             ?>
-                                <tr class="trash-row-item" style="cursor: pointer;">
-                                    <td class="py-3 ps-3 order-trash-select-column d-none">
+                                <tr class="trash-row-item"<?= $showTrashActions ? ' style="cursor: pointer;"' : '' ?>>
+                                    <?php if ($showTrashActions): ?><td class="py-3 ps-3 order-trash-select-column d-none">
                                         <input type="checkbox" class="form-check-input trashed-order-checkbox" name="order_ids[]" value="<?php echo (int)$order['id']; ?>" aria-label="Select order <?php echo htmlspecialchars($displayOrderNo, ENT_QUOTES, 'UTF-8'); ?>">
-                                    </td>
+                                    </td><?php endif; ?>
                                     <td class="fw-semibold"><?php echo htmlspecialchars($displayOrderNo, ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo htmlspecialchars($order['customer_name'], ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo htmlspecialchars(formatAppCurrency($order['total']), ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo htmlspecialchars($order['status'] ?? 'Pending', ENT_QUOTES, 'UTF-8'); ?></td>
                                     <td><?php echo !empty($order['created_at']) ? htmlspecialchars(date('d M Y', strtotime($order['created_at'])), ENT_QUOTES, 'UTF-8') : 'N/A'; ?></td>
-                                    <td class="text-end text-nowrap" onclick="event.stopPropagation();">
-                                        <button type="button" class="btn btn-outline-success btn-sm" onclick="runTrashedOrderAction('order_restore', <?php echo (int)$order['id']; ?>, 'Recover this order?')">
+                                    <?php if ($showTrashActions): ?><td class="text-end text-nowrap" onclick="event.stopPropagation();">
+                                        <?php if ($trashPermissions['orders']['restore']): ?><button type="button" class="btn btn-outline-success btn-sm" onclick="runTrashedOrderAction('order_restore', <?php echo (int)$order['id']; ?>, 'Recover this order?')">
                                             <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
-                                        </button>
-                                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="runTrashedOrderAction('order_delete', <?php echo (int)$order['id']; ?>, 'Permanently delete this order and its items? This cannot be undone.')">
+                                        </button><?php endif; ?>
+                                        <?php if ($trashPermissions['orders']['delete']): ?><button type="button" class="btn btn-outline-danger btn-sm" onclick="runTrashedOrderAction('order_delete', <?php echo (int)$order['id']; ?>, 'Permanently delete this order and its items? This cannot be undone.')">
                                             <i class="bi bi-trash me-1"></i> Delete Forever
-                                        </button>
-                                    </td>
+                                        </button><?php endif; ?>
+                                    </td><?php endif; ?>
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
+                                <td colspan="<?= $showTrashActions ? '7' : '5' ?>" class="text-center py-5 text-muted">
                                     <i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>
                                     Orders trash is empty.
                                 </td>
@@ -626,7 +636,7 @@ include __DIR__ . '/../layouts/header.php';
             <input type="hidden" name="customer_bulk_action" id="customerTrashBulkAction">
             <input type="hidden" name="customer_action" id="singleCustomerTrashAction">
             <input type="hidden" name="customer_id" id="singleCustomerTrashId">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <?php if ($showTrashActions): ?><div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleCustomerTrashSelection" aria-label="Enable customer selection" aria-pressed="false" title="Enable customer selection">
                         <i class="bi bi-check-square"></i>
@@ -634,40 +644,41 @@ include __DIR__ . '/../layouts/header.php';
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllTrashCustomers">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedCustomers" disabled>
+                    <?php if ($trashPermissions['customers']['restore']): ?><button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedCustomers" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedCustomers" disabled>
+                    </button><?php endif; ?>
+                    <?php if ($trashPermissions['customers']['delete']): ?><button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedCustomers" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Selected Forever
-                    </button>
+                    </button><?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light">
                         <tr>
-                            <th class="customer-trash-select-column d-none">Select</th>
-                            <th>Customer</th><th>Phone</th><th>Joined</th><th class="text-end">Actions</th>
+                            <?php if ($showTrashActions): ?><th class="customer-trash-select-column d-none">Select</th><?php endif; ?>
+                            <th>Customer</th><th>Phone</th><th>Joined</th><?php if ($showTrashActions): ?><th class="text-end">Actions</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
                     <?php if ($customersResult && $customersResult->num_rows > 0): ?>
                         <?php while ($customer = $customersResult->fetch_assoc()): ?>
-                            <tr class="trash-row-item" style="cursor: pointer;">
-                                <td class="customer-trash-select-column d-none">
+                            <tr class="trash-row-item"<?= $showTrashActions ? ' style="cursor: pointer;"' : '' ?>>
+                                <?php if ($showTrashActions): ?><td class="customer-trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trashed-customer-checkbox" name="customer_ids[]" value="<?= (int) $customer['id'] ?>" aria-label="Select <?= htmlspecialchars($customer['name'] ?? 'customer', ENT_QUOTES, 'UTF-8') ?>">
-                                </td>
+                                </td><?php endif; ?>
                                 <td><strong><?= htmlspecialchars($customer['name'] ?? '', ENT_QUOTES, 'UTF-8') ?></strong><br><small class="text-muted"><?= htmlspecialchars($customer['email'] ?? '', ENT_QUOTES, 'UTF-8') ?></small></td>
                                 <td><?= htmlspecialchars($customer['phone'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
                                 <td><?= !empty($customer['created_at']) ? htmlspecialchars(date('d M Y', strtotime($customer['created_at'])), ENT_QUOTES, 'UTF-8') : 'N/A' ?></td>
-                                <td class="text-end" onclick="event.stopPropagation();">
-                                    <button class="btn btn-sm btn-outline-success" type="button" onclick="runSingleCustomerTrashAction('restore', <?= (int) $customer['id'] ?>)"><i class="bi bi-arrow-counterclockwise me-1"></i>Recover</button>
-                                    <button class="btn btn-sm btn-outline-danger" type="button" onclick="runSingleCustomerTrashAction('delete', <?= (int) $customer['id'] ?>)"><i class="bi bi-trash me-1"></i>Delete forever</button>
-                                </td>
+                                <?php if ($showTrashActions): ?><td class="text-end" onclick="event.stopPropagation();">
+                                    <?php if ($trashPermissions['customers']['restore']): ?><button class="btn btn-sm btn-outline-success" type="button" onclick="runSingleCustomerTrashAction('restore', <?= (int) $customer['id'] ?>)"><i class="bi bi-arrow-counterclockwise me-1"></i>Recover</button><?php endif; ?>
+                                    <?php if ($trashPermissions['customers']['delete']): ?><button class="btn btn-sm btn-outline-danger" type="button" onclick="runSingleCustomerTrashAction('delete', <?= (int) $customer['id'] ?>)"><i class="bi bi-trash me-1"></i>Delete forever</button><?php endif; ?>
+                                </td><?php endif; ?>
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="5" class="text-center py-5 text-muted"><i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>No deleted customers.</td></tr>
+                        <tr><td colspan="<?= $showTrashActions ? '5' : '3' ?>" class="text-center py-5 text-muted"><i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>No deleted customers.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -681,7 +692,7 @@ include __DIR__ . '/../layouts/header.php';
             <input type="hidden" name="user_bulk_action" id="userTrashBulkAction">
             <input type="hidden" name="user_action" id="singleUserTrashAction">
             <input type="hidden" name="user_id" id="singleUserTrashId">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+            <?php if ($showTrashActions): ?><div class="d-flex justify-content-between align-items-center gap-2 mb-2">
                 <div class="d-flex align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleUserTrashSelection" aria-label="Enable user selection" aria-pressed="false" title="Enable user selection">
                         <i class="bi bi-check-square"></i>
@@ -689,32 +700,33 @@ include __DIR__ . '/../layouts/header.php';
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllTrashUsers">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedUsers" disabled>
+                    <?php if ($trashPermissions['users']['restore']): ?><button type="button" class="btn btn-success btn-sm d-none" id="restoreSelectedUsers" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedUsers" disabled>
+                    </button><?php endif; ?>
+                    <?php if ($trashPermissions['users']['delete']): ?><button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedUsers" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Selected Forever
-                    </button>
+                    </button><?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
-                            <th class="py-3 ps-3 user-trash-select-column d-none">Select</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 ps-3 user-trash-select-column d-none">Select</th><?php endif; ?>
                             <th class="py-3">User</th>
                             <th class="py-3">Email</th>
                             <th class="py-3">Role</th>
-                            <th class="py-3 text-end pe-3">Actions</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 text-end pe-3">Actions</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
                     <?php if ($usersResult && $usersResult->num_rows > 0): ?>
                         <?php while ($user = $usersResult->fetch_assoc()): ?>
-                            <tr class="trash-row-item" style="cursor: pointer;">
-                                <td class="py-3 ps-3 user-trash-select-column d-none">
+                            <tr class="trash-row-item"<?= $showTrashActions ? ' style="cursor: pointer;"' : '' ?>>
+                                <?php if ($showTrashActions): ?><td class="py-3 ps-3 user-trash-select-column d-none">
                                     <input type="checkbox" class="form-check-input trashed-user-checkbox" name="user_ids[]" value="<?= (int)$user['id'] ?>" aria-label="Select user <?= htmlspecialchars($user['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
-                                </td>
+                                </td><?php endif; ?>
                                 <td>
                                     <div class="d-flex align-items-center gap-2">
                                         <?php if (!empty($user['avatar']) && file_exists('../uploads/avatars/' . $user['avatar'])): ?>
@@ -729,18 +741,18 @@ include __DIR__ . '/../layouts/header.php';
                                 </td>
                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                 <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
-                                <td class="text-end pe-3" onclick="event.stopPropagation();">
-                                    <button class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" type="button" onclick="runSingleUserTrashAction('restore', <?= (int)$user['id'] ?>)">
+                                <?php if ($showTrashActions): ?><td class="text-end pe-3" onclick="event.stopPropagation();">
+                                    <?php if ($trashPermissions['users']['restore']): ?><button class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" type="button" onclick="runSingleUserTrashAction('restore', <?= (int)$user['id'] ?>)">
                                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-danger rounded-pill px-3" type="button" onclick="runSingleUserTrashAction('delete', <?= (int)$user['id'] ?>)">
+                                    </button><?php endif; ?>
+                                    <?php if ($trashPermissions['users']['delete']): ?><button class="btn btn-sm btn-outline-danger rounded-pill px-3" type="button" onclick="runSingleUserTrashAction('delete', <?= (int)$user['id'] ?>)">
                                         <i class="bi bi-trash me-1"></i> Delete Forever
-                                    </button>
-                                </td>
+                                    </button><?php endif; ?>
+                                </td><?php endif; ?>
                             </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="5" class="text-center py-5 text-muted"><i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>No deleted users found in trash.</td></tr>
+                        <tr><td colspan="<?= $showTrashActions ? '5' : '3' ?>" class="text-center py-5 text-muted"><i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>No deleted users found in trash.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>
@@ -751,7 +763,7 @@ include __DIR__ . '/../layouts/header.php';
         <section class="notification-trash"
                  data-action-url="../notifications/actions.php"
                  data-csrf-token="<?= htmlspecialchars($_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32)), ENT_QUOTES, 'UTF-8') ?>">
-            <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
+            <?php if ($showTrashActions): ?><div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
                 <div class="d-flex align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleNotificationTrashSelection" aria-pressed="false" title="Enable selection">
                         <i class="bi bi-check-square"></i>
@@ -759,51 +771,52 @@ include __DIR__ . '/../layouts/header.php';
                     <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllNotificationTrash">Select All</button>
                 </div>
                 <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-success btn-sm d-none" id="recoverSelectedNotifications" disabled>
+                    <?php if ($trashPermissions['notifications']['restore']): ?><button type="button" class="btn btn-success btn-sm d-none" id="recoverSelectedNotifications" disabled>
                         <i class="bi bi-arrow-counterclockwise me-1"></i> Recover Selected
-                    </button>
-                    <button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedNotifications" disabled>
+                    </button><?php endif; ?>
+                    <?php if ($trashPermissions['notifications']['delete']): ?><button type="button" class="btn btn-danger btn-sm d-none" id="deleteSelectedNotifications" disabled>
                         <i class="bi bi-trash me-1"></i> Delete Forever
-                    </button>
+                    </button><?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
-                            <th class="py-3 ps-3 notification-trash-select-column d-none" style="width: 50px;">Select</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 ps-3 notification-trash-select-column d-none" style="width: 50px;">Select</th><?php endif; ?>
                             <th class="py-3 ps-3">Title</th>
                             <th class="py-3">Message</th>
                             <th class="py-3">Type</th>
                             <th class="py-3">Date</th>
-                            <th class="py-3 text-end pe-3">Actions</th>
+                            <?php if ($showTrashActions): ?><th class="py-3 text-end pe-3">Actions</th><?php endif; ?>
                         </tr>
                     </thead>
                     <tbody>
                         <?php if ($notificationTrashResult && $notificationTrashResult->num_rows > 0): ?>
                             <?php while ($notif = $notificationTrashResult->fetch_assoc()): ?>
-                                <tr class="trash-row-item" style="cursor: pointer;" data-notification-trash-row>
-                                    <td class="py-3 ps-3 notification-trash-select-column d-none">
+                                <tr class="trash-row-item"<?= $showTrashActions ? ' style="cursor: pointer;"' : '' ?> data-notification-trash-row>
+                                    <?php if ($showTrashActions): ?><td class="py-3 ps-3 notification-trash-select-column d-none">
                                         <input type="checkbox" class="form-check-input notification-trash-checkbox" value="<?= (int)$notif['id'] ?>" aria-label="Select notification">
-                                    </td>
+                                    </td><?php endif; ?>
                                     <td class="ps-3 fw-semibold text-dark"><?= htmlspecialchars($notif['title'] ?? 'Notification', ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars($notif['message'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><span class="badge bg-light text-dark border"><?= htmlspecialchars($notif['type'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></span></td>
                                     <td><?= htmlspecialchars(!empty($notif['created_at']) ? date('d M Y, H:i', strtotime($notif['created_at'])) : 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
-                                    <td class="text-end pe-3" onclick="event.stopPropagation();">
-                                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" onclick="confirmNotificationAction('recover', <?= (int)$notif['id'] ?>)">
+                                    <?php if ($showTrashActions): ?><td class="text-end pe-3" onclick="event.stopPropagation();">
+                                        <?php if ($trashPermissions['notifications']['restore']): ?><button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 me-1" onclick="confirmNotificationAction('recover', <?= (int)$notif['id'] ?>)">
                                             <i class="bi bi-arrow-counterclockwise me-1"></i> Recover
-                                        </button>
-                                        <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="confirmNotificationAction('delete', <?= (int)$notif['id'] ?>)">
+                                        </button><?php endif; ?>
+                                        <?php if ($trashPermissions['notifications']['delete']): ?><button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="confirmNotificationAction('delete', <?= (int)$notif['id'] ?>)">
                                             <i class="bi bi-trash me-1"></i> Delete Forever
-                                        </button>
-                                    </td>
+                                        </button><?php endif; ?>
+                                    </td><?php endif; ?>
                                 </tr>
                             <?php endwhile; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">
+                                <td colspan="<?= $showTrashActions ? '6' : '4' ?>" class="text-center py-5 text-muted">
                                     <i class="bi bi-trash3 fs-1 d-block mb-2 opacity-50"></i>
                                     Notification trash is empty.
                                 </td>
@@ -812,7 +825,7 @@ include __DIR__ . '/../layouts/header.php';
                     </tbody>
                 </table>
             </div>
-            <p class="notification-action-error d-none m-3 text-danger" role="alert"></p>
+            <?php if ($showTrashActions): ?><p class="notification-action-error d-none m-3 text-danger" role="alert"></p><?php endif; ?>
         </section>
         <?php endif; ?>
     </div>
@@ -965,18 +978,18 @@ function confirmNotificationAction(action, id) {
             const actionUrl = section ? section.dataset.actionUrl : '../notifications/actions.php';
             const csrfToken = section ? section.dataset.csrfToken : '';
 
-            const formData = new FormData();
-            formData.append('action', isRestore ? 'restore_trash' : 'delete_permanent');
-            formData.append('notification_id', id);
-            formData.append('csrf_token', csrfToken);
-
             fetch(actionUrl, {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ action: isRestore ? 'recover' : 'delete', ids: [id] })
             })
             .then(res => res.json())
             .then(data => {
-                if (data.success) {
+                if (data.status === 'success') {
                     Swal.fire('Success!', data.message || 'Action completed successfully.', 'success')
                     .then(() => location.reload());
                 } else {

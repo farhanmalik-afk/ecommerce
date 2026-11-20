@@ -40,8 +40,8 @@ function sendAppError(int $statusCode, string $message, string $type = 'error'):
     $theme = function_exists('appThemeName') ? appThemeName() : 'original';
     $base = function_exists('getBaseUrl') ? getBaseUrl() : '/';
     $isAuthenticated = !empty($_SESSION['admin_id']);
-    $buttonHref = $isAuthenticated ? $base . 'index.php' : $base . 'login.php';
-    $buttonLabel = $isAuthenticated ? 'Back to Dashboard' : 'Sign In';
+    $buttonHref = $base . 'login.php';
+    $buttonLabel = $isAuthenticated ? 'Continue to an accessible page' : 'Sign In';
     $stylePath = $base . 'assets/css/style.css';
     $language = function_exists('appLanguage') ? appLanguage() : 'en';
 

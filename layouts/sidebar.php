@@ -9,6 +9,7 @@ while (in_array(basename($appBase), $moduleFolders, true)) {
 
 $currentPage = basename($scriptPath);
 $currentDirectory = basename(dirname($scriptPath));
+$canViewDashboard = appUserCan('dashboard');
 $activeModule = match ($currentPage) {
     'trash.php' => 'trash',
     'profit-report.php' => 'profit_tracker',
@@ -50,13 +51,13 @@ $activeModule = match ($currentPage) {
     <div class="sidebar-card">
 
       <div class="d-flex justify-content-between align-items-center mb-4">
-        <a href="<?= htmlspecialchars($appBase, ENT_QUOTES, 'UTF-8') ?>/index.php" class="brand">
+        <?php if ($canViewDashboard): ?><a href="<?= htmlspecialchars($appBase, ENT_QUOTES, 'UTF-8') ?>/index.php" class="brand"><?php else: ?><div class="brand"><?php endif; ?>
   <?php if (!empty($appSettings['logo'])): ?>
    <img src="<?= htmlspecialchars(appLogoUrl(), ENT_QUOTES, 'UTF-8') ?>" alt="Store Logo" class="rounded-circle object-fit-cover" width="40" height="40"> <?php else: ?>
     <i class="bi bi-grid-1x2"></i>
   <?php endif; ?>
   <span><?= htmlspecialchars($appSettings['store_name'] ?? 'Admin Dashboard', ENT_QUOTES, 'UTF-8') ?></span>
-</a>
+<?php if ($canViewDashboard): ?></a><?php else: ?></div><?php endif; ?>
         <button type="button" class="btn-close d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close"></button>
       </div>
 
@@ -79,10 +80,7 @@ $activeModule = match ($currentPage) {
             ['settings', 'Settings', 'bi-gear', '/settings.php'],
         ];
         foreach ($navigation as [$module, $label, $icon, $path]):
-            if (function_exists('appUserCan') && !appUserCan($module)) {
-                continue;
-            }
-            if ($module === 'pos' && ($appSettings['pos_enabled'] ?? '1') !== '1') {
+            if (!appUserCan($module)) {
                 continue;
             }
         ?>

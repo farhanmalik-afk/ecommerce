@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/config.php';
+$canDeleteNotifications = appUserCan('notifications', 'delete');
 $_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32));
 
 $allowedTypes = ['order', 'stock', 'customer', 'return'];
@@ -87,15 +88,17 @@ if ($typeFilter !== '') {
   <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
     <strong><?= number_format($totalNotifications) ?> notification(s)</strong>
     <div class="d-flex flex-wrap gap-2">
+      <?php if ($canDeleteNotifications): ?>
       <button class="btn btn-outline-secondary btn-sm" type="button" data-notification-toggle-selection aria-pressed="false">Select</button>
       <button class="btn btn-outline-secondary btn-sm d-none" type="button" data-notification-select-all>Select All</button>
       <button class="btn btn-outline-danger btn-sm d-none" type="button" data-notification-trash-selected disabled>Move Selected to Trash</button>
+      <?php endif; ?>
     </div>
   </div>
   <div class="table-responsive">
     <table class="table align-middle mb-0">
       <thead class="table-light">
-        <tr><th class="notification-select-column d-none">Select</th><th>Notification</th><th>Type</th><th>Time</th></tr>
+        <tr><?php if ($canDeleteNotifications): ?><th class="notification-select-column d-none">Select</th><?php endif; ?><th>Notification</th><th>Type</th><th>Time</th></tr>
       </thead>
       <tbody>
       <?php foreach ($historyNotifications as $notification): ?>
@@ -105,9 +108,9 @@ if ($typeFilter !== '') {
             ?? $appBase . '/notifications.php?focus=' . (int) $notification['id'];
         ?>
         <tr id="notification-<?= (int) $notification['id'] ?>" data-notification-row<?= $focusId === (int) $notification['id'] ? ' class="notification-focused"' : '' ?>>
-          <td class="notification-select-column d-none">
+          <?php if ($canDeleteNotifications): ?><td class="notification-select-column d-none">
             <input class="form-check-input notification-checkbox" type="checkbox" value="<?= (int) $notification['id'] ?>" aria-label="Select notification">
-          </td>
+          </td><?php endif; ?>
           <td>
             <a class="notification-history-link<?= (int) $notification['is_read'] === 0 ? ' is-unread' : '' ?>"
                href="<?= htmlspecialchars($notificationHref, ENT_QUOTES, 'UTF-8') ?>"
@@ -121,12 +124,12 @@ if ($typeFilter !== '') {
         </tr>
       <?php endforeach; ?>
       <?php if (!$historyNotifications): ?>
-        <tr><td colspan="4" class="text-center text-muted py-4">No notifications match these filters.</td></tr>
+        <tr><td colspan="<?= $canDeleteNotifications ? '4' : '3' ?>" class="text-center text-muted py-4">No notifications match these filters.</td></tr>
       <?php endif; ?>
       </tbody>
     </table>
   </div>
-  <p class="notification-action-error d-none m-3" role="alert"></p>
+  <?php if ($canDeleteNotifications): ?><p class="notification-action-error d-none m-3" role="alert"></p><?php endif; ?>
 </section>
 
 <?php if ($totalPages > 1): ?>

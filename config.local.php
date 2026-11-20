@@ -1,0 +1,4 @@
+<?php
+
+$stripe_secret_key = '';
+$stripe_publishable_key = '';

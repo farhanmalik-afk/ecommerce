@@ -2,6 +2,11 @@
 session_start();
 include "../config.php";
 
+$canCreateProducts = appUserCan('products', 'create');
+$canEditProducts = appUserCan('products', 'edit');
+$canDeleteProducts = appUserCan('products', 'delete');
+$canExportProducts = appUserCan('products', 'export');
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
     if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
         http_response_code(403);
@@ -193,11 +198,14 @@ include __DIR__ . '/../layouts/header.php';
     <p class="text-muted">Manage your store products, pricing, and stock.</p>
   </div>
   <!-- Action Buttons: Add, Import, Export -->
-  <div class="d-flex gap-2">
-     <a href="export_products.php" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-down me-1"></i> Export</a>
+  <?php if ($canExportProducts || $canCreateProducts): ?><div class="d-flex gap-2">
+    <?php if ($canExportProducts): ?><a href="export_products.php" class="btn btn-outline-secondary"><i class="bi bi-file-earmark-arrow-down me-1"></i> Export</a><?php endif; ?>
+    <?php if ($canCreateProducts): ?>
     <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal"><i class="bi bi-file-earmark-arrow-up me-1"></i> Import</button>
     <a href="add-product.php" class="btn btn-dark"><i class="bi bi-plus-lg me-1"></i> Add Product</a>
+    <?php endif; ?>
   </div>
+  <?php endif; ?>
 </section>
 
 <!-- Advanced Search & Filter Card with Separate SKU & Name Boxes -->
@@ -252,10 +260,12 @@ include __DIR__ . '/../layouts/header.php';
       <button type="button" class="table-sort-toggle" data-sort-toggle data-sort-target="productsTable" aria-label="Sort Ascending" title="Sort Ascending" aria-pressed="false">
         <i class="bi bi-sort-up-alt" aria-hidden="true"></i>
       </button>
+      <?php if ($canDeleteProducts): ?>
       <button type="button" class="btn btn-outline-secondary btn-sm" id="toggleProductSelection" aria-label="Enable product selection" aria-pressed="false" title="Enable product selection">
         <i class="bi bi-check-square"></i>
       </button>
       <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllProducts">Select All</button>
+      <?php endif; ?>
     </div>
     <div class="d-flex align-items-center gap-3 flex-wrap">
       <form method="GET" action="products.php" class="d-flex align-items-center gap-2 mb-0">
@@ -269,19 +279,19 @@ include __DIR__ . '/../layouts/header.php';
           <?php endforeach; ?>
         </select>
       </form>
-      <button type="submit" form="bulkDeleteForm" class="btn btn-danger btn-sm d-none" id="bulkDeleteButton" disabled>
+      <?php if ($canDeleteProducts): ?><button type="submit" form="bulkDeleteForm" class="btn btn-danger btn-sm d-none" id="bulkDeleteButton" disabled>
         <i class="bi bi-trash me-1"></i> Move Selected to Trash
-      </button>
+      </button><?php endif; ?>
     </div>
   </div>
-  <form method="POST" action="products.php" id="bulkDeleteForm">
+  <?php if ($canDeleteProducts): ?><form method="POST" action="products.php" id="bulkDeleteForm"><?php endif; ?>
     <input type="hidden" name="bulk_delete" value="1">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div class="table-responsive product-list-responsive">
       <table class="table table-hover data-table align-middle mb-0" id="productsTable">
         <thead class="table-light">
           <tr>
-            <th class="ps-4 product-select-column d-none">Select</th>
+            <?php if ($canDeleteProducts): ?><th class="ps-4 product-select-column d-none">Select</th><?php endif; ?>
             <th class="product-number-heading">#</th>
             <th class="product-name-heading">Product Name</th>
             <th class="product-sku-column">SKU</th>
@@ -386,7 +396,7 @@ include __DIR__ . '/../layouts/header.php';
                 $avatar_display = "<img src='{$img_path}' width='32' height='32' class='rounded border object-fit-cover'>";
 
                 echo "<tr>
-                        <td class='ps-4 product-select-column d-none'><input type='checkbox' class='form-check-input product-checkbox' name='product_ids[]' value='" . (int)$row['id'] . "' aria-label='Select " . htmlspecialchars($row['name'], ENT_QUOTES) . "'></td>
+                        " . ($canDeleteProducts ? "<td class='ps-4 product-select-column d-none'><input type='checkbox' class='form-check-input product-checkbox' name='product_ids[]' value='" . (int)$row['id'] . "' aria-label='Select " . htmlspecialchars($row['name'], ENT_QUOTES) . "'></td>" : "") . "
                         <td class='product-number-cell'>" . $row_number++ . "</td>
                         <td class='product-name-cell'>
                           <div class='product-name-wrapper'>
@@ -402,24 +412,22 @@ include __DIR__ . '/../layouts/header.php';
                         <td class='product-stock-column'><span class='badge bg-info text-dark'>" . ($row['stock'] ?? 0) . " units</span></td>
                         <td class='product-status-column'><span class='badge {$status_badge}'>{$status}</span></td>
                         <td class='product-date-column list-secondary-column'><small class='text-muted'>" . date('d M Y', strtotime($row['created_at'] ?? 'now')) . "</small></td>
-                        <td class='product-actions-cell'>
-                          <div class='product-row-actions'>
-                            <a href='product-details.php?id=" . (int) $row['id'] . "' class='product-action-link product-action-view' title='View details' aria-label='View " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-eye' aria-hidden='true'></i></a>
-                            <button type='button' onclick='confirmStatusChange(" . (int) $row['id'] . ", this.dataset.currentStatus)' data-current-status='" . htmlspecialchars($status, ENT_QUOTES) . "' class='product-action-link product-action-status' title='Toggle status' aria-label='Toggle status for " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-slash-circle' aria-hidden='true'></i></button>
-                            <a href='edit-product.php?id=" . (int) $row['id'] . "' class='product-action-link product-action-edit' title='Edit product' aria-label='Edit " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-pencil-square' aria-hidden='true'></i></a>
-                            <button type='button' onclick='confirmDelete(" . (int) $row['id'] . ")' class='product-action-link product-action-delete' title='Move to Trash' aria-label='Move " . htmlspecialchars($row['name'], ENT_QUOTES) . " to Trash'><i class='bi bi-trash' aria-hidden='true'></i></button>
-                          </div>
-                        </td>
+                        <td class='product-actions-cell'><div class='product-row-actions'>
+                            <a href='product-details.php?id=" . (int) $row['id'] . "' class='product-action-link product-action-view' title='View details' aria-label='View " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-eye' aria-hidden='true'></i></a>"
+                            . ($canEditProducts ? "<button type='button' onclick='confirmStatusChange(" . (int) $row['id'] . ", this.dataset.currentStatus)' data-current-status='" . htmlspecialchars($status, ENT_QUOTES) . "' class='product-action-link product-action-status' title='Toggle status' aria-label='Toggle status for " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-slash-circle' aria-hidden='true'></i></button>
+                            <a href='edit-product.php?id=" . (int) $row['id'] . "' class='product-action-link product-action-edit' title='Edit product' aria-label='Edit " . htmlspecialchars($row['name'], ENT_QUOTES) . "'><i class='bi bi-pencil-square' aria-hidden='true'></i></a>" : "")
+                            . ($canDeleteProducts ? "<button type='button' onclick='confirmDelete(" . (int) $row['id'] . ")' class='product-action-link product-action-delete' title='Move to Trash' aria-label='Move " . htmlspecialchars($row['name'], ENT_QUOTES) . " to Trash'><i class='bi bi-trash' aria-hidden='true'></i></button>" : "")
+                            . "</div></td>
                       </tr>";
             }
         } else {
-            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>No products found matching your search criteria.</td></tr>";
+            echo "<tr><td colspan='" . ($canDeleteProducts ? '10' : '9') . "' class='text-center py-4 text-muted'>No products found matching your search criteria.</td></tr>";
         }
         ?>
         </tbody>
       </table>
     </div>
-  </form>
+  <?php if ($canDeleteProducts): ?></form><?php endif; ?>
 </div>
 
 <?php if ($total_pages > 1): ?>
@@ -436,7 +444,7 @@ include __DIR__ . '/../layouts/header.php';
 <?php endif; ?>
 
 <!-- Import Products Modal -->
-<div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
+<?php if ($canCreateProducts): ?><div class="modal fade" id="importModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content rounded-4 border-0 shadow">
       <form action="import_products.php" method="POST" enctype="multipart/form-data">
@@ -461,8 +469,10 @@ include __DIR__ . '/../layouts/header.php';
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 <script>
+<?php if ($canDeleteProducts): ?>
 const productCheckboxes = document.querySelectorAll('.product-checkbox');
 const productSelectionColumns = document.querySelectorAll('.product-select-column');
 const toggleProductSelectionButton = document.getElementById('toggleProductSelection');
@@ -560,6 +570,7 @@ bulkDeleteForm.addEventListener('submit', (event) => {
         }
     });
 });
+<?php endif; ?>
 
 const productActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 function postProductAction(action, id) {

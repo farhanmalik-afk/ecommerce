@@ -1,6 +1,8 @@
 <?php
 session_start();
 include "../../config.php";
+$canCreatePosOrders = appUserCan('pos', 'create');
+$canViewDashboard = appUserCan('dashboard');
 
 $posStatus = $appSettings['pos_module_enabled'] ?? $appSettings['pos_enabled'] ?? '1';
 if ($posStatus !== '1' || !appModuleEnabled('pos')) {
@@ -127,6 +129,16 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         transform: translateY(-4px);
         box-shadow: 0 10px 25px rgba(20, 36, 61, 0.12);
         border-color: var(--gold);
+    }
+
+    .product-card.pos-view-only {
+        cursor: default;
+    }
+
+    .product-card.pos-view-only:hover {
+        transform: none;
+        box-shadow: 0 4px 12px rgba(20, 36, 61, 0.05);
+        border-color: var(--border);
     }
 
     /* Image Wrapper */
@@ -290,9 +302,9 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     <!-- Compact & Professional Top Header -->
     <header class="topbar mb-2 bg-white px-3 py-2 rounded-4 shadow-sm border d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 flex-shrink-0">
         <div class="d-flex align-items-center gap-3 flex-wrap">
-            <a href="../../index.php" class="btn btn-sm btn-outline-dark px-3 py-1 rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center">
+            <?php if ($canViewDashboard): ?><a href="../../index.php" class="btn btn-sm btn-outline-dark px-3 py-1 rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center">
                 <i class="bi bi-house-door-fill me-1"></i> Dashboard
-            </a>
+            </a><?php endif; ?>
             <div class="vr text-muted opacity-25 d-none d-md-block"></div>
             <div>
                 <h5 class="fw-bold text-dark mb-0"><?= htmlspecialchars($langData['pos_counter'] ?? 'POS & Order Billing') ?></h5>
@@ -324,17 +336,17 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 
     <div class="row g-3 flex-grow-1 overflow-hidden">
       <!-- Left Section -->
-      <div class="col-lg-8 d-flex flex-column overflow-hidden">
+      <div class="<?= $canCreatePosOrders ? 'col-lg-8' : 'col-12' ?> d-flex flex-column overflow-hidden">
         
         <div class="card border-0 shadow-sm p-2.5 mb-2 rounded-4 flex-shrink-0">
           <form method="GET" action="" class="row g-2 align-items-center">
-            <div class="col-xl-4 col-md-4">
+            <div class="<?= $canCreatePosOrders ? 'col-xl-4 col-md-4' : 'col-xl-9 col-md-9' ?>">
               <div class="input-group bg-light rounded-pill overflow-hidden border">
                 <span class="input-group-text bg-transparent border-0 ps-3"><i class="bi bi-search text-muted"></i></span>
                 <input type="text" name="search" class="form-control border-0 bg-transparent shadow-none form-control-sm" placeholder="Search by name..." value="<?php echo htmlspecialchars($search); ?>">
               </div>
             </div>
-            <div class="col-xl-5 col-md-5">
+            <?php if ($canCreatePosOrders): ?><div class="col-xl-5 col-md-5">
               <div class="input-group bg-light rounded-pill overflow-hidden border">
                 <span class="input-group-text bg-transparent border-0 ps-3"><i class="bi bi-upc-scan text-primary"></i></span>
                 <input type="text" id="barcode-scanner-input" class="form-control border-0 bg-transparent shadow-none form-control-sm" placeholder="Scan Barcode / SKU here..." autofocus>
@@ -343,7 +355,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
                  <i class="bi bi-camera-fill fs-5"></i>
                 </button>  
               </div>
-            </div>
+            </div><?php endif; ?>
             <div class="col-xl-3 col-md-3 d-flex gap-2">
               <button type="submit" class="btn btn-dark w-100 rounded-pill fw-semibold btn-sm py-1.5">Filter</button>
               <?php if (!empty($search) || !empty($selected_cat)): ?>
@@ -371,7 +383,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
             <?php if ($products_result && $products_result->num_rows > 0): ?>
               <?php while ($prod = $products_result->fetch_assoc()): ?>
                 <div class="col-xl-4 col-md-6 col-sm-6 product-item-box" data-sku="<?php echo strtolower($prod['sku'] ?? ''); ?>" data-id="<?php echo $prod['id']; ?>">
-                  <div class="card product-card h-100" onclick="addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
+                  <div class="card product-card h-100 <?= $canCreatePosOrders ? '' : 'pos-view-only' ?>" <?php if ($canCreatePosOrders): ?>onclick="addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)"<?php endif; ?>>
                     
                     <div class="product-img-wrapper">
                       <img src="../../uploads/<?php echo htmlspecialchars($prod['image'] ?? 'default.jpg'); ?>" alt="Product" onerror="this.src='https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'">
@@ -399,9 +411,9 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
                           <span class="text-muted small d-block" style="font-size: 10px;">Price</span>
                           <span class="fw-bold text-dark" style="font-size: 0.95rem;"><?php echo htmlspecialchars(formatAppCurrency($prod['price']), ENT_QUOTES, 'UTF-8'); ?></span>
                         </div>
-                        <button class="btn btn-sm btn-outline-dark px-2 py-0.5" style="font-size: 12px;" onclick="event.stopPropagation(); addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
+                        <?php if ($canCreatePosOrders): ?><button class="btn btn-sm btn-outline-dark px-2 py-0.5" style="font-size: 12px;" onclick="event.stopPropagation(); addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
                           <i class="bi bi-plus-lg"></i> Add
-                        </button>
+                        </button><?php endif; ?>
                       </div>
 
                     </div>
@@ -421,7 +433,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
       </div>
 
       <!-- Right Section: Cart & Checkout -->
-      <div class="col-lg-4">
+      <?php if ($canCreatePosOrders): ?><div class="col-lg-4">
         <div class="cart-sidebar-wrapper">
           <div class="cart-sidebar p-3">
             <div class="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom flex-shrink-0">
@@ -485,6 +497,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
           </div>
         </div>
       </div>
+      <?php endif; ?>
 
     </div>
   </main>
@@ -822,7 +835,7 @@ function fetchProductByBarcode(barcode) {
 </script>
 <?php unset($_SESSION['swal_success']); endif; ?>
 
-<!-- Camera Scanner Modal -->
+<?php if ($canCreatePosOrders): ?><!-- Camera Scanner Modal -->
 <div class="modal fade" id="cameraModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content rounded-4 border-0 shadow">
@@ -837,5 +850,6 @@ function fetchProductByBarcode(barcode) {
     </div>
   </div>
 </div>
+<?php endif; ?>
 </body>
 </html>

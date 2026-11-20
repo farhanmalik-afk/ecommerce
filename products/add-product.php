@@ -235,8 +235,8 @@ include __DIR__ . '/../layouts/header.php';
             </div>
 
             <div class="col-12 mt-4">
-                <button type="submit" id="submitBtn" class="btn btn-dark">Save Product</button>
-                <a href="products.php" class="btn btn-outline-secondary ms-2">Cancel</a>
+                <?php if (appUserCan('products', 'create')): ?><button type="submit" id="submitBtn" class="btn btn-dark">Save Product</button><?php endif; ?>
+                <?php if (appUserCan('products')): ?><a href="products.php" class="btn btn-outline-secondary ms-2">Cancel</a><?php endif; ?>
             </div>
         </div>
     </form>

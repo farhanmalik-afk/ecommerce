@@ -187,10 +187,10 @@ function hasPermission(mysqli $conn, int $adminId, string $module, string $actio
     return $allowed;
 }
 
-function appUserCan(string $module): bool
+function appUserCan(string $module, string $action = 'view'): bool
 {
     global $conn;
-    return hasPermission($conn, getCurrentAdminId(), $module, 'view');
+    return hasPermission($conn, getCurrentAdminId(), $module, $action);
 }
 
 function respondForbidden(string $reason = 'permission'): void
@@ -313,7 +313,9 @@ function getRequestAccessContext(): ?array
             ?? $_POST['product_action']
             ?? $_POST['bulk_action']
             ?? '';
-        $action = in_array($trashAction, ['delete', 'order_delete'], true) ? 'delete' : 'edit';
+        $action = in_array($trashAction, ['delete', 'order_delete'], true)
+            ? 'delete'
+            : (in_array($trashAction, ['restore', 'recover', 'order_restore'], true) ? 'restore' : 'edit');
     }
 
     return ['module' => $module, 'action' => $action];

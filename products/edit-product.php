@@ -229,8 +229,8 @@ include __DIR__ . '/../layouts/header.php';
                 <textarea name="description" class="form-control" rows="3" maxlength="5000"><?= htmlspecialchars($formValues['description'], ENT_QUOTES, 'UTF-8') ?></textarea>
             </div>
             <div class="col-12 mt-4">
-                <button type="submit" class="btn btn-dark">Update Product</button>
-                <a href="products.php" class="btn btn-outline-secondary ms-2">Cancel</a>
+                <?php if (appUserCan('products', 'edit')): ?><button type="submit" class="btn btn-dark">Update Product</button><?php endif; ?>
+                <?php if (appUserCan('products')): ?><a href="products.php" class="btn btn-outline-secondary ms-2">Cancel</a><?php endif; ?>
             </div>
         </div>
     </form>

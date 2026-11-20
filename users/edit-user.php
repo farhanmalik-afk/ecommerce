@@ -153,11 +153,11 @@ include "../layouts/header.php";
             <h1>Edit User</h1>
             <p class="text-muted">Update system user details, roles, and permissions.</p>
         </div>
-        <div>
+        <?php if (appUserCan('user_management')): ?><div>
             <a href="users.php" class="btn btn-outline-secondary btn-sm">
                 <i class="bi bi-arrow-left me-1"></i> Back to Users
             </a>
-        </div>
+        </div><?php endif; ?>
     </section>
 
     <div class="row justify-content-center">
@@ -261,8 +261,8 @@ include "../layouts/header.php";
                         </div>
 
                         <div class="d-flex justify-content-end gap-2 mt-4">
-                            <a href="users.php" class="btn btn-light border">Cancel</a>
-                            <button type="submit" class="btn btn-dark px-4">Update User</button>
+                            <?php if (appUserCan('user_management')): ?><a href="users.php" class="btn btn-light border">Cancel</a><?php endif; ?>
+                            <?php if (appUserCan('user_management', 'edit')): ?><button type="submit" class="btn btn-dark px-4">Update User</button><?php endif; ?>
                         </div>
                     </form>
                 </div>

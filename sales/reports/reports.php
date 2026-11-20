@@ -1,6 +1,7 @@
-<?php
 session_start();
 include "../../config.php";
+$canViewProfitTracker = appUserCan('profit_tracker');
+$canViewOrders = appUserCan('orders');
 
 // Calculate Dynamic Base Path for relative assets
 $scriptPath = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
@@ -136,7 +137,7 @@ include __DIR__ . '/../../layouts/header.php';
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
     <div class="d-flex gap-2">
       <a href="reports.php" class="btn btn-dark btn-sm rounded-pill px-3 active"><i class="bi bi-bar-chart-fill me-1"></i> Sales Reports</a>
-      <a href="profit-report.php" class="btn btn-outline-dark btn-sm rounded-pill px-3"><i class="bi bi-graph-up-arrow me-1"></i> Profit Tracker</a>
+      <?php if ($canViewProfitTracker): ?><a href="profit-report.php" class="btn btn-outline-dark btn-sm rounded-pill px-3"><i class="bi bi-graph-up-arrow me-1"></i> Profit Tracker</a><?php endif; ?>
     </div>
     <div>
       <button onclick="window.print();" class="btn btn-outline-secondary btn-sm rounded-pill px-3"><i class="bi bi-printer me-1"></i> Print Report</button>
@@ -273,7 +274,7 @@ include __DIR__ . '/../../layouts/header.php';
   <div class="card border-0 shadow-sm p-4 rounded-4 mb-4 bg-white">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h5 class="fw-bold text-dark mb-0"><i class="bi bi-receipt me-2 text-primary"></i>Orders History Report</h5>
-      <a href="../orders/orders.php" class="btn btn-sm btn-outline-dark rounded-pill">View All Orders</a>
+      <?php if ($canViewOrders): ?><a href="../orders/orders.php" class="btn btn-sm btn-outline-dark rounded-pill">View All Orders</a><?php endif; ?>
     </div>
     <div class="table-responsive">
       <table class="table table-hover align-middle mb-0">
@@ -284,7 +285,7 @@ include __DIR__ . '/../../layouts/header.php';
             <th>Payment Method</th>
             <th>Total Amount</th>
             <th>Date / Time</th>
-            <th class="text-end">Invoice</th>
+            <?php if ($canViewOrders): ?><th class="text-end">Invoice</th><?php endif; ?>
           </tr>
         </thead>
         <tbody>
@@ -296,14 +297,14 @@ include __DIR__ . '/../../layouts/header.php';
                 <td><span class="badge bg-secondary"><?php echo htmlspecialchars($ord['payment_method'] ?? 'Cash'); ?></span></td>
                 <td class="fw-bold text-success"><?php echo htmlspecialchars(formatAppCurrency($ord['total']), ENT_QUOTES, 'UTF-8'); ?></td>
                 <td class="text-muted small"><?php echo date('M d, Y - h:i A', strtotime($ord['created_at'])); ?></td>
-                <td class="text-end">
+                <?php if ($canViewOrders): ?><td class="text-end">
                   <a href="../orders/invoice.php?id=<?php echo $ord['id']; ?>" target="_blank" class="btn btn-sm btn-outline-dark"><i class="bi bi-printer"></i> Print</a>
-                </td>
+                </td><?php endif; ?>
               </tr>
             <?php endwhile; ?>
           <?php else: ?>
             <tr>
-              <td colspan="6" class="text-center text-muted py-4">No orders found matching your search or date criteria.</td>
+              <td colspan="<?= $canViewOrders ? '6' : '5' ?>" class="text-center text-muted py-4">No orders found matching your search or date criteria.</td>
             </tr>
           <?php endif; ?>
         </tbody>

@@ -4044,3 +4044,65 @@ body.theme-green-teal .app-sidebar .sidebar-card,
     scroll-behavior: auto;
   }
 }
+
+/* Let tables use their intrinsic width and scroll only when they exceed the wrapper. */
+.table-responsive,
+.table-responsive.product-list-responsive,
+.table-responsive.customer-list-responsive {
+  width: 100% !important;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: #087CFF #020B25;
+}
+
+.table-responsive::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+  background: #020B25;
+  border-radius: 999px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+  background: #087CFF;
+  border-radius: 999px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+  background: #0669D8;
+}
+
+.table-responsive > table,
+.table-responsive > #productsTable,
+.table-responsive > #customersTable {
+  width: max-content !important;
+  min-width: 100% !important;
+  max-width: none !important;
+  table-layout: auto !important;
+}
+
+.table-responsive > table th,
+.table-responsive > table td,
+.table-responsive > #productsTable th,
+.table-responsive > #productsTable td,
+.table-responsive > #customersTable th,
+.table-responsive > #customersTable td {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.table-responsive .table-action-group,
+.table-responsive .product-row-actions,
+.table-responsive td > .d-inline-flex {
+  display: inline-flex !important;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px !important;
+  white-space: nowrap !important;
+}

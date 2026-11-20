@@ -1,6 +1,9 @@
 <?php
 session_start();
 include "../config.php";
+$canAdjustStock = appUserCan('stock_management', 'edit');
+$canViewStockHistory = appUserCan('stock_management');
+$canViewSuppliers = appUserCan('suppliers');
 
 if (hasPermission($conn, getCurrentAdminId(), 'inventory', 'create')) {
     $all_prods = $conn->query('SELECT id FROM products');
@@ -36,17 +39,17 @@ include "../layouts/header.php";
             <h1>Inventory Management</h1>
             <p class="text-muted">Monitor stock levels and manage warehouse inventory.</p>
         </div>
-        <div>
-            <a href="stock-adjust.php" class="btn btn-dark btn-sm me-1">
+        <?php if ($canAdjustStock || $canViewStockHistory || $canViewSuppliers): ?><div>
+            <?php if ($canAdjustStock): ?><a href="stock-adjust.php" class="btn btn-dark btn-sm me-1">
                 <i class="bi bi-sliders2 me-1"></i> Adjust Stock
-            </a>
-            <a href="stock-history.php" class="btn btn-outline-secondary btn-sm me-1">
+            </a><?php endif; ?>
+            <?php if ($canViewStockHistory): ?><a href="stock-history.php" class="btn btn-outline-secondary btn-sm me-1">
                 <i class="bi bi-clock-history me-1"></i> Stock History
-            </a>
-            <a href="suppliers.php" class="btn btn-outline-dark btn-sm">
+            </a><?php endif; ?>
+            <?php if ($canViewSuppliers): ?><a href="suppliers.php" class="btn btn-outline-dark btn-sm">
                 <i class="bi bi-truck me-1"></i> Suppliers
-            </a>
-        </div>
+            </a><?php endif; ?>
+        </div><?php endif; ?>
     </section>
 
     <!-- Search & Filter Card -->
@@ -85,7 +88,7 @@ include "../layouts/header.php";
                         <th>SKU / ID</th>
                         <th>Current Quantity</th>
                         <th>Status</th>
-                        <th class="text-end pe-3">Action</th>
+                        <?php if ($canAdjustStock): ?><th class="text-end pe-3">Action</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -166,14 +169,14 @@ include "../layouts/header.php";
                                 <td><span class="text-muted"><?php echo !empty($row['sku']) ? htmlspecialchars($row['sku']) : '#PROD-' . $row['product_id']; ?></span></td>
                                 <td><strong><?php echo $qty; ?> units</strong></td>
                                 <td><?php echo $status_badge; ?></td>
-                                <td class="text-end pe-3">
+                                <?php if ($canAdjustStock): ?><td class="text-end pe-3">
                                     <a href="stock-adjust.php?product_id=<?php echo $row['product_id']; ?>" class="btn btn-sm btn-outline-dark px-2 py-1" style="font-size: 11px;">Adjust</a>
-                                </td>
+                                </td><?php endif; ?>
                             </tr>
                             <?php
                         }
                     } else {
-                        echo "<tr><td colspan='5' class='text-center text-muted py-3'>No inventory items found matching your search.</td></tr>";
+                        echo "<tr><td colspan='" . ($canAdjustStock ? '5' : '4') . "' class='text-center text-muted py-3'>No inventory items found matching your search.</td></tr>";
                     }
                     ?>
                 </tbody>

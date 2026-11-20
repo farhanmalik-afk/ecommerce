@@ -32,7 +32,12 @@ $allowedActions = ['mark_read', 'trash', 'recover', 'delete'];
 if (!is_string($action) || !in_array($action, $allowedActions, true)) {
     respondWithError(422, 'Select a valid notification action.');
 }
-if (!hasPermission($conn, getCurrentAdminId(), 'notifications', $action === 'delete' ? 'delete' : 'edit')) {
+$permissionAction = match ($action) {
+    'delete', 'trash' => 'delete',
+    'recover' => 'restore',
+    default => 'edit',
+};
+if (!appUserCan('notifications', $permissionAction)) {
     respondWithError(403, 'You do not have permission to perform this notification action.');
 }
 

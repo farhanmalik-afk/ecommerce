@@ -84,8 +84,8 @@ $parent = ['Categories', 'categories.php'];
               <input type="text" name="name" class="form-control" placeholder="Enter category name (e.g. Mobile Accessories)" required>
             </div>
             <div class="d-flex gap-2">
-              <button type="submit" class="btn btn-dark">Save Category</button>
-              <a href="categories.php" class="btn btn-outline-secondary">Cancel</a>
+              <?php if (appUserCan('categories', 'create')): ?><button type="submit" class="btn btn-dark">Save Category</button><?php endif; ?>
+              <?php if (appUserCan('categories')): ?><a href="categories.php" class="btn btn-outline-secondary">Cancel</a><?php endif; ?>
             </div>
           </form>
         </div>

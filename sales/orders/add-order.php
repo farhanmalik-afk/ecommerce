@@ -183,8 +183,8 @@ include "../../layouts/header.php";
                 </div>
 
                 <div class="d-flex justify-content-between">
-                    <a href="orders.php" class="btn btn-secondary">Back to Orders</a>
-                    <button type="submit" class="btn btn-dark px-4">Save Order</button>
+                    <?php if (appUserCan('orders')): ?><a href="orders.php" class="btn btn-secondary">Back to Orders</a><?php endif; ?>
+                    <?php if (appUserCan('orders', 'create')): ?><button type="submit" class="btn btn-dark px-4">Save Order</button><?php endif; ?>
                 </div>
             </form>
         </div>

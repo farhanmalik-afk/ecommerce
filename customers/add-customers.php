@@ -313,13 +313,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
 
                 <div class="col-12 mt-4 pt-2 border-top">
-                  <button type="submit" class="btn btn-dark px-4 py-2" style="background: var(--dark-gradient); border: 0; font-weight: 500;">
+                  <?php if (appUserCan('customers', 'create')): ?><button type="submit" class="btn btn-dark px-4 py-2" style="background: var(--dark-gradient); border: 0; font-weight: 500;">
                     <i class="bi bi-check-circle me-1"></i> Save Customer
-                  </button>
+                  </button><?php endif; ?>
                   <button type="reset" class="btn btn-outline-danger ms-2 px-4 py-2" onclick="resetFormValidation()">
                     <i class="bi bi-arrow-counterclockwise me-1"></i> Reset
                   </button>
-                  <a href="customers.php" class="btn btn-outline-secondary ms-2 px-4 py-2">Cancel</a>
+                  <?php if (appUserCan('customers')): ?><a href="customers.php" class="btn btn-outline-secondary ms-2 px-4 py-2">Cancel</a><?php endif; ?>
                 </div>
 
               </div>

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/../../config.php';
+$canCreateReturns = appUserCan('returns', 'create');
 
 $pageTitle = 'Returns';
 $parent = ['Orders', '../orders/orders.php'];
@@ -57,11 +58,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 }
 
-$orderOptionsResult = $conn->query('SELECT id, order_no, total FROM orders ORDER BY created_at DESC, id DESC');
-if ($orderOptionsResult === false) {
-    throw new RuntimeException('Unable to load orders for return requests: ' . $conn->error);
+$returnOrders = [];
+if ($canCreateReturns) {
+    $orderOptionsResult = $conn->query('SELECT id, order_no, total FROM orders ORDER BY created_at DESC, id DESC');
+    if ($orderOptionsResult === false) {
+        throw new RuntimeException('Unable to load orders for return requests: ' . $conn->error);
+    }
+    $returnOrders = $orderOptionsResult->fetch_all(MYSQLI_ASSOC);
 }
-$returnOrders = $orderOptionsResult->fetch_all(MYSQLI_ASSOC);
 
 $returnStatsResult = $conn->query("SELECT
     SUM(status = 'Pending') AS pending_count,
@@ -94,7 +98,7 @@ include __DIR__ . '/../../layouts/header.php';
   </div>
 </section>
 
-<section class="card mb-4">
+<?php if ($canCreateReturns): ?><section class="card mb-4">
   <div class="card-body">
     <h2 class="h5 mb-3">Submit a return/refund request</h2>
     <?php if ($returnError !== ''): ?>
@@ -129,6 +133,7 @@ include __DIR__ . '/../../layouts/header.php';
     </form>
   </div>
 </section>
+<?php endif; ?>
 
 <section class="row g-3 mb-4">
   <div class="col-12 col-sm-6 col-xl-3">
@@ -162,7 +167,7 @@ include __DIR__ . '/../../layouts/header.php';
           ?>
           <tr>
             <td><strong><?= htmlspecialchars($returnRow['return_no'], ENT_QUOTES, 'UTF-8') ?></strong></td>
-            <td><a href="../orders/order-details.php?id=<?= (int) $returnRow['order_id'] ?>" class="order-link"><?= htmlspecialchars($returnRow['order_no'], ENT_QUOTES, 'UTF-8') ?></a></td>
+            <td><?php if (appUserCan('orders')): ?><a href="../orders/order-details.php?id=<?= (int) $returnRow['order_id'] ?>" class="order-link"><?= htmlspecialchars($returnRow['order_no'], ENT_QUOTES, 'UTF-8') ?></a><?php else: ?><?= htmlspecialchars($returnRow['order_no'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></td>
             <td><?= htmlspecialchars($returnRow['customer_name'], ENT_QUOTES, 'UTF-8') ?></td>
             <td>—</td>
             <td class="text-center">—</td>

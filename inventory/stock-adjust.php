@@ -150,8 +150,8 @@ include "../layouts/header.php";
                 </div>
 
                 <div class="d-flex justify-content-between">
-                    <a href="inventory.php" class="btn btn-secondary">Back to Inventory</a>
-                    <button type="submit" class="btn btn-dark px-4">Update Stock</button>
+                    <?php if (appUserCan('inventory')): ?><a href="inventory.php" class="btn btn-secondary">Back to Inventory</a><?php endif; ?>
+                    <?php if (appUserCan('stock_management', 'edit')): ?><button type="submit" class="btn btn-dark px-4">Update Stock</button><?php endif; ?>
                 </div>
             </form>
         </div>

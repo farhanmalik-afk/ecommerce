@@ -255,8 +255,8 @@ include "../layouts/header.php";
 
                 <!-- Form Action Buttons -->
                 <div class="col-12 mt-4">
-                    <button type="submit" id="submitBtn" class="btn btn-dark">Save User</button>
-                    <a href="users.php" class="btn btn-outline-secondary ms-2">Cancel</a>
+                    <?php if (appUserCan('user_management', 'create')): ?><button type="submit" id="submitBtn" class="btn btn-dark">Save User</button><?php endif; ?>
+                    <?php if (appUserCan('user_management')): ?><a href="users.php" class="btn btn-outline-secondary ms-2">Cancel</a><?php endif; ?>
                 </div>
             </div>
         </form>

@@ -94,7 +94,7 @@
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
               <h6 class="card-title mb-0">Profile information</h6>
-              <a href="#" class="reply-link" aria-label="Edit profile"><i class="bi bi-pencil"></i></a>
+              <?php if (appUserCan('user_management', 'edit')): ?><a href="#" class="reply-link" aria-label="Edit profile"><i class="bi bi-pencil"></i></a><?php endif; ?>
             </div>
 
             <p class="card-sub">Hi, I'm Richard. I build products that help teams work better together and I enjoy turning ideas into simple designs.</p>

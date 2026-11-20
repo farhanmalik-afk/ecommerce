@@ -245,10 +245,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
 
                 <div class="col-12 mt-4 pt-2 border-top">
-                  <button type="submit" class="btn btn-dark px-4 py-2" style="background: var(--dark-gradient); border: 0; font-weight: 500;">
+                  <?php if (appUserCan('customers', 'edit')): ?><button type="submit" class="btn btn-dark px-4 py-2" style="background: var(--dark-gradient); border: 0; font-weight: 500;">
                     <i class="bi bi-check-circle me-1"></i> Update Customer
-                  </button>
-                  <a href="customer-details.php?id=<?php echo $customer_id; ?>" class="btn btn-outline-secondary ms-2 px-4 py-2">Cancel</a>
+                  </button><?php endif; ?>
+                  <?php if (appUserCan('customers')): ?><a href="customer-details.php?id=<?php echo $customer_id; ?>" class="btn btn-outline-secondary ms-2 px-4 py-2">Cancel</a><?php endif; ?>
                 </div>
 
               </div>
