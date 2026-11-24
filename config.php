@@ -57,7 +57,6 @@ try {
     error_log('Database connection failed: ' . $exception->getMessage());
     sendAppError(500, 'The application is temporarily unavailable. Please try again later.');
 }
-
 // Charset UTF-8 set karna taake special characters / database values theek rahein
 $conn->set_charset("utf8mb4");
 

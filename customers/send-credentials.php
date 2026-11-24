@@ -4,6 +4,7 @@ define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
+use PHPMailer\PHPMailer\Exception as PHPMailerException;
 use PHPMailer\PHPMailer\PHPMailer;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -55,27 +56,44 @@ try {
     }
     $updateStmt->close();
 
-    $mailUsername = get_env_setting('SMTP_USERNAME', $appSettings['smtp_username'] ?? '');
-    $mailPassword = get_env_setting('SMTP_PASSWORD', $appSettings['smtp_password'] ?? '');
-    $mailFrom = get_env_setting('SMTP_FROM_EMAIL', $appSettings['smtp_from_email'] ?? $mailUsername);
-    if (!$mailUsername || !$mailPassword || !$mailFrom) {
+    $mailUsername = trim((string) ($appSettings['fm3023098@gmail.com'] ?? 'fm3023098@gmail.com'));
+    $dbPassword   = trim((string) ($appSettings['ahac egzf ldce bjlh
+'] ?? ''));
+    $rawPassword  = $dbPassword !== '' ? $dbPassword : 'ahac egzf ldce bjlh';
+    $mailFrom     = trim((string) ($appSettings['smtp_from_email'] ?? ($mailUsername !== '' ? $mailUsername : 'fm3023098@gmail.com')));
+
+    if ($mailUsername === '' || $rawPassword === '' || $mailFrom === '') {
         throw new RuntimeException('SMTP credentials are not configured.');
+    }
+
+    $cleanPassword = preg_replace('/\s+/', '', $rawPassword) ?? '';
+    if (strlen($cleanPassword) !== 16) {
+        throw new RuntimeException(
+            'SMTP password length is ' . strlen($cleanPassword) . ' (expected 16). Fix smtp_password in app_settings.'
+        );
     }
 
     $mail = new PHPMailer(true);
     $mail->isSMTP();
-    $mail->Host = get_env_setting('SMTP_HOST', $appSettings['smtp_host'] ?? 'smtp.gmail.com');
+    $mail->Host = (string) ($appSettings['smtp_host'] ?? 'smtp.gmail.com');
     $mail->SMTPAuth = true;
     $mail->Username = $mailUsername;
-    $mail->Password = $mailPassword;
-    $encryption = get_env_setting('SMTP_ENCRYPTION', $appSettings['smtp_encryption'] ?? 'tls');
-    $mail->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
-    $mail->SMTPAutoTLS = $encryption !== 'none';
-    if ($encryption === 'none') {
+    $mail->Password = $cleanPassword;
+
+    $encryption = strtolower(trim((string) ($appSettings['smtp_encryption'] ?? 'tls')));
+    if ($encryption === 'ssl') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+        $mail->SMTPAutoTLS = true;
+    } elseif ($encryption === 'none') {
         $mail->SMTPSecure = '';
+        $mail->SMTPAutoTLS = false;
+    } else {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->SMTPAutoTLS = true;
     }
-    $mail->Port = (int) get_env_setting('SMTP_PORT', (string) ($appSettings['smtp_port'] ?? 587));
-    $mail->setFrom($mailFrom, get_env_setting('SMTP_SENDER_NAME', $appSettings['smtp_sender_name'] ?? 'E-Commerce Dashboard'));
+
+    $mail->Port = (int) ($appSettings['smtp_port'] ?? 587);
+    $mail->setFrom($mailFrom, (string) ($appSettings['smtp_sender_name'] ?? 'E-Commerce Dashboard'));
     $mail->addAddress($customer['email'], $customer['name']);
     $mail->isHTML(true);
     $mail->Subject = 'Your Updated Login Credentials';
@@ -90,16 +108,20 @@ try {
             <p>Please change your password after logging in.</p>
             <p>Best Regards,<br><strong>E-Commerce Team</strong></p>
         </div>';
+
     $mail->send();
 
     $conn->commit();
     respondWithJson(200, ['status' => 'success', 'message' => 'Login credentials were emailed successfully.']);
-} catch (PHPMailer\Exception $exception) {
+} catch (PHPMailerException $exception) {
     $conn->rollback();
     error_log('Unable to email customer credentials: ' . $exception->getMessage());
-    respondWithJson(502, ['status' => 'error', 'message' => 'Email service is not configured or the SMTP connection failed. Contact the administrator.']);
+    respondWithJson(502, [
+        'status' => 'error',
+        'message' => 'SMTP Failed: ' . $exception->getMessage() . ' | User: ' . $mailUsername . ' | PassLen: ' . strlen($cleanPassword ?? '')
+    ]);
 } catch (mysqli_sql_exception | RuntimeException $exception) {
     $conn->rollback();
     error_log('Unable to update emailed customer credentials: ' . $exception->getMessage());
-    respondWithJson(500, ['status' => 'error', 'message' => 'Email service is not configured or customer credentials could not be updated. Contact the administrator.']);
+    respondWithJson(500, ['status' => 'error', 'message' => $exception->getMessage()]);
 }

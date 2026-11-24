@@ -238,6 +238,43 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         color: var(--dark);
     }
 
+    .pos-header-left,
+    .pos-header-stats,
+    .pos-stat-item,
+    .pos-stat-item strong,
+    .pos-stat-item span {
+        min-width: 0;
+    }
+
+    .pos-header-stats {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        width: auto;
+        max-width: 100%;
+        padding: 0.55rem 0.75rem;
+        font-size: 12px;
+    }
+
+    .pos-stat-item {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    .pos-stat-item strong,
+    .pos-stat-item span {
+        white-space: nowrap;
+    }
+
+    .pos-stat-separator {
+        height: 14px;
+        flex: 0 0 1px;
+    }
+
     #barcode-scanner-input {
         cursor: text !important;
         pointer-events: auto !important;
@@ -294,6 +331,42 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         overflow: visible;
     }
 }
+
+@media (max-width: 767.98px) {
+    .pos-header-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
+        justify-content: initial;
+        row-gap: 0.45rem;
+    }
+
+    .pos-stat-item {
+        min-width: 0;
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .pos-stat-item:last-child {
+        grid-column: 1 / -1;
+    }
+
+    .pos-stat-separator {
+        display: none;
+    }
+}
+
+@media (max-width: 419.98px) {
+    .pos-header-stats {
+        grid-template-columns: minmax(0, 1fr);
+        padding-inline: 0.65rem;
+    }
+
+    .pos-stat-item,
+    .pos-stat-item:last-child {
+        grid-column: 1;
+    }
+}
 </style>
 </head>
 <body class="theme-<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-theme="<?= htmlspecialchars($currentTheme, ENT_QUOTES, 'UTF-8') ?>" data-bs-theme="light">
@@ -301,7 +374,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
   <main class="app-main">
     <!-- Compact & Professional Top Header -->
     <header class="topbar mb-2 bg-white px-3 py-2 rounded-4 shadow-sm border d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 flex-shrink-0">
-        <div class="d-flex align-items-center gap-3 flex-wrap">
+        <div class="pos-header-left d-flex align-items-center gap-3 flex-wrap">
             <?php if ($canViewDashboard): ?><a href="../../index.php" class="btn btn-sm btn-outline-dark px-3 py-1 rounded-pill fw-semibold text-decoration-none d-inline-flex align-items-center">
                 <i class="bi bi-house-door-fill me-1"></i> Dashboard
             </a><?php endif; ?>
@@ -313,20 +386,20 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         </div>
 
         <div class="d-flex align-items-center flex-wrap gap-2">
-            <div class="d-flex align-items-center bg-light border px-3 py-1.5 rounded-pill shadow-sm gap-3" style="font-size: 12px;">
-                <div class="d-flex align-items-center gap-1.5">
+            <div class="pos-header-stats d-flex align-items-center bg-light border rounded-pill shadow-sm">
+                <div class="pos-stat-item">
                     <i class="bi bi-cash-stack text-success fs-6"></i>
                     <span class="text-muted">Sales:</span>
                     <strong class="text-dark"><?php echo htmlspecialchars(formatAppCurrency($counter_sales), ENT_QUOTES, 'UTF-8'); ?></strong>
                 </div>
-                <div class="vr opacity-25" style="height: 14px;"></div>
-                <div class="d-flex align-items-center gap-1.5">
+                <div class="pos-stat-separator vr opacity-25"></div>
+                <div class="pos-stat-item">
                     <i class="bi bi-receipt text-primary fs-6"></i>
                     <span class="text-muted">Orders:</span>
                     <strong class="text-dark"><?php echo $today_orders_count; ?></strong>
                 </div>
-                <div class="vr opacity-25" style="height: 14px;"></div>
-                <div class="d-flex align-items-center gap-1.5 text-dark fw-medium">
+                <div class="pos-stat-separator vr opacity-25"></div>
+                <div class="pos-stat-item text-dark fw-medium">
                     <i class="bi bi-clock text-warning fs-6"></i>
                     <span><?php echo date('d M Y, h:i A'); ?></span>
                 </div>

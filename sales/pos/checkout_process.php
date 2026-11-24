@@ -57,6 +57,11 @@ try {
         exit();
     }
 
+    $autoloadPath = __DIR__ . '/../../vendor/autoload.php';
+    if (file_exists($autoloadPath)) {
+        require_once $autoloadPath;
+    }
+
     if (!class_exists('\Stripe\Stripe')) {
         http_response_code(503);
         echo json_encode(['status' => 'error', 'message' => 'The Stripe payment library is unavailable.']);
@@ -101,7 +106,6 @@ try {
         ];
     }
 
-    require_once __DIR__ . '/../../vendor/autoload.php';
     \Stripe\Stripe::setApiKey($stripeSecretKey);
     $appUrl = get_env_setting('APP_URL', 'http://localhost');
     $urlParts = parse_url($appUrl);

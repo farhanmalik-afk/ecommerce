@@ -156,6 +156,7 @@ a { text-decoration: none; }
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  flex: 0 0 auto;
   min-height: 40px;
   padding: 0.55rem 1rem;
   color: #fff;
@@ -374,6 +375,28 @@ a { text-decoration: none; }
   .app .topbar {
     flex-wrap: wrap;
     gap: 0.75rem;
+  }
+  .app .topbar > .d-flex:first-child {
+    width: 100%;
+    gap: 0.5rem !important;
+  }
+  .app .topbar > .d-flex:first-child nav {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .app .topbar > .d-flex:first-child nav .breadcrumb {
+    max-width: 100%;
+  }
+  .app .topbar > .d-flex:first-child nav .breadcrumb-item.active {
+    display: none;
+  }
+  .header-pos-btn {
+    min-height: 36px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.78rem;
+  }
+  .header-pos-btn-arrow {
+    display: none;
   }
   .app .topbar > .d-flex:last-child {
     width: 100%;
@@ -4056,7 +4079,7 @@ body.theme-green-teal .app-sidebar .sidebar-card,
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   scrollbar-width: thin;
-  scrollbar-color: #087CFF #020B25;
+  scrollbar-color: var(--scrollbar-thumb, #c6a15b) var(--scrollbar-track, transparent);
 }
 
 .table-responsive::-webkit-scrollbar {
@@ -4064,17 +4087,17 @@ body.theme-green-teal .app-sidebar .sidebar-card,
 }
 
 .table-responsive::-webkit-scrollbar-track {
-  background: #020B25;
+  background: var(--scrollbar-track, transparent);
   border-radius: 999px;
 }
 
 .table-responsive::-webkit-scrollbar-thumb {
-  background: #087CFF;
+  background: var(--scrollbar-thumb, #c6a15b);
   border-radius: 999px;
 }
 
 .table-responsive::-webkit-scrollbar-thumb:hover {
-  background: #0669D8;
+  background: var(--scrollbar-thumb, #c6a15b);
 }
 
 .table-responsive > table,
