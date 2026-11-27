@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once __DIR__ . '/../../config.php';
 $canCreateReturns = appUserCan('returns', 'create');
 
@@ -153,7 +152,7 @@ include __DIR__ . '/../../layouts/header.php';
 <div class="card table-card mb-4">
   <div class="table-card-header"><h6 class="card-title mb-0">Return requests</h6></div>
   <div class="table-responsive">
-    <table class="table data-table align-middle mb-0">
+    <table class="table data-table align-middle mb-0" data-sortable-table>
       <thead><tr><th>Return</th><th>Order</th><th>Customer</th><th>Product</th><th class="text-center">Qty</th><th>Reason</th><th class="text-center">Status</th><th class="text-end">Refund amount</th></tr></thead>
       <tbody>
         <?php foreach ($returnRows as $returnRow): ?>

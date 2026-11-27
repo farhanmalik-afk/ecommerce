@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../../config.php";
 
 $search = isset($_GET['search']) ? trim($_GET['search']) : '';
@@ -46,7 +45,7 @@ include "../../layouts/header.php";
             <h6 class="m-0 font-weight-bold text-dark">Transaction Records</h6>
         </div>
         <div class="table-responsive">
-            <table class="table data-table align-middle mb-0" style="width: 100%;">
+            <table class="table data-table align-middle mb-0" style="width: 100%;" data-sortable-table>
                 <thead>
                     <tr>
                         <th class="ps-3">Transaction ID</th>

@@ -94,8 +94,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['admin_role_id'] = (int) $admin['role_id'];
                     $_SESSION['admin_email'] = $admin['email'];
                     $_SESSION['admin_name'] = $admin['name'];
-                    $_SESSION['admin_logged_in'] = true;
                     unset($_SESSION['login_csrf']);
+                    if (isTwoFactorEnabled($conn, (int) $admin['id'])) {
+                        $_SESSION['admin_logged_in'] = false;
+                        $_SESSION['2fa_pending'] = true;
+                        $_SESSION['2fa_pending_admin_id'] = (int) $admin['id'];
+                        $_SESSION['2fa_verified_admin_id'] = 0;
+                        $_SESSION['2fa_verified_at'] = 0;
+                        header('Location: ' . getBaseUrl() . 'verify-two-factor.php');
+                        exit();
+                    }
+                    $_SESSION['admin_logged_in'] = true;
+                    $_SESSION['2fa_pending'] = false;
+                    createAdminSession($conn, (int) $admin['id']);
                     $landingPage = getPermittedLandingPage();
                     if ($landingPage !== null) {
                         header('Location: ' . $landingPage);

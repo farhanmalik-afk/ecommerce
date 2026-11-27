@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
@@ -101,7 +100,7 @@ $pageTitle = 'Categories';
           </div>
 
           <div class="table-responsive">
-            <table class="table data-table align-middle mb-0">
+            <table class="table data-table align-middle mb-0" data-sortable-table>
               <thead class="table-light">
                 <tr>
                   <th class="ps-4">ID</th>
@@ -171,6 +170,7 @@ $pageTitle = 'Categories';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="../assets/js/table-sort.js" defer></script>
 <script>
 const categoryActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 function postCategoryAction(action, id) {
@@ -224,13 +224,19 @@ function confirmStatusChange(id, currentStatus) {
 
 <?php if (isset($_SESSION['swal_success'])): ?>
 <script>
-    Swal.fire({ icon: 'success', title: 'Success!', text: '<?php echo $_SESSION['swal_success']; ?>', timer: 2000, showConfirmButton: false });
+    Swal.fire({ icon: 'success', title: 'Success!', text: <?= json_encode(
+        (string) $_SESSION['swal_success'],
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ) ?>, timer: 2000, showConfirmButton: false });
 </script>
 <?php unset($_SESSION['swal_success']); endif; ?>
 
 <?php if (isset($_SESSION['swal_error'])): ?>
 <script>
-    Swal.fire({ icon: 'error', title: 'Notice', text: '<?php echo $_SESSION['swal_error']; ?>', confirmButtonColor: '#d33' });
+    Swal.fire({ icon: 'error', title: 'Notice', text: <?= json_encode(
+        (string) $_SESSION['swal_error'],
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ) ?>, confirmButtonColor: '#d33' });
 </script>
 <?php unset($_SESSION['swal_error']); endif; ?>
 

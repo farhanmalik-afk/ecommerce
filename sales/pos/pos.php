@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../../config.php";
 $canCreatePosOrders = appUserCan('pos', 'create');
 $canViewDashboard = appUserCan('dashboard');
@@ -64,6 +63,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
     <!-- Custom Style -->
     <link href="../../assets/css/style.css?v=<?= filemtime(__DIR__ . '/../../assets/css/style.css') ?>" rel="stylesheet">
+    <script src="../../assets/js/dashboard-navigation.js" defer></script>
     
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -239,6 +239,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
     }
 
     .pos-header-left,
+    .pos-header-actions,
     .pos-header-stats,
     .pos-stat-item,
     .pos-stat-item strong,
@@ -248,31 +249,69 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 
     .pos-header-stats {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: flex-end;
-        gap: 0.75rem;
+        gap: 8px;
         width: auto;
         max-width: 100%;
-        padding: 0.55rem 0.75rem;
+        min-width: 0;
+        padding: 0;
         font-size: 12px;
+    }
+
+    .pos-header-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-width: 100%;
+        min-width: 0;
     }
 
     .pos-stat-item {
         display: flex;
         align-items: center;
         gap: 0.35rem;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        max-width: 100%;
+        padding: 0.4rem 0.65rem;
+        overflow: hidden;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 999px;
         white-space: nowrap;
     }
 
     .pos-stat-item strong,
     .pos-stat-item span {
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
     }
 
-    .pos-stat-separator {
-        height: 14px;
-        flex: 0 0 1px;
+    .pos-filter-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .pos-category-tabs {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 0.25rem;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+    }
+
+    .pos-category-tabs .category-pill {
+        flex: 0 0 auto;
     }
 
     #barcode-scanner-input {
@@ -333,39 +372,39 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 }
 
 @media (max-width: 767.98px) {
-    .pos-header-stats {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .pos-header-actions {
         width: 100%;
-        justify-content: initial;
-        row-gap: 0.45rem;
+    }
+
+    .pos-header-stats {
+        display: flex;
+        flex-wrap: wrap;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        gap: 8px;
     }
 
     .pos-stat-item {
         min-width: 0;
-        width: 100%;
-        overflow: hidden;
+        flex: 0 1 auto;
     }
 
-    .pos-stat-item:last-child {
-        grid-column: 1 / -1;
+    .pos-filter-actions {
+        justify-content: flex-end;
     }
 
-    .pos-stat-separator {
-        display: none;
+    .pos-filter-actions .btn {
+        width: auto !important;
+    }
+
+    .pos-filter-actions .btn-dark {
+        min-width: 5.5rem;
     }
 }
 
 @media (max-width: 419.98px) {
-    .pos-header-stats {
-        grid-template-columns: minmax(0, 1fr);
-        padding-inline: 0.65rem;
-    }
-
-    .pos-stat-item,
-    .pos-stat-item:last-child {
-        grid-column: 1;
-    }
+    .pos-stat-item { max-width: 100%; }
 }
 </style>
 </head>
@@ -385,20 +424,18 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
             </div>
         </div>
 
-        <div class="d-flex align-items-center flex-wrap gap-2">
-            <div class="pos-header-stats d-flex align-items-center bg-light border rounded-pill shadow-sm">
+        <div class="pos-header-actions d-flex align-items-center flex-wrap gap-2">
+            <div class="pos-header-stats">
                 <div class="pos-stat-item">
                     <i class="bi bi-cash-stack text-success fs-6"></i>
                     <span class="text-muted">Sales:</span>
                     <strong class="text-dark"><?php echo htmlspecialchars(formatAppCurrency($counter_sales), ENT_QUOTES, 'UTF-8'); ?></strong>
                 </div>
-                <div class="pos-stat-separator vr opacity-25"></div>
                 <div class="pos-stat-item">
                     <i class="bi bi-receipt text-primary fs-6"></i>
                     <span class="text-muted">Orders:</span>
                     <strong class="text-dark"><?php echo $today_orders_count; ?></strong>
                 </div>
-                <div class="pos-stat-separator vr opacity-25"></div>
                 <div class="pos-stat-item text-dark fw-medium">
                     <i class="bi bi-clock text-warning fs-6"></i>
                     <span><?php echo date('d M Y, h:i A'); ?></span>
@@ -429,7 +466,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
                 </button>  
               </div>
             </div><?php endif; ?>
-            <div class="col-xl-3 col-md-3 d-flex gap-2">
+            <div class="col-xl-3 col-md-3 pos-filter-actions">
               <button type="submit" class="btn btn-dark w-100 rounded-pill fw-semibold btn-sm py-1.5">Filter</button>
               <?php if (!empty($search) || !empty($selected_cat)): ?>
                 <a href="pos.php" class="btn btn-outline-secondary rounded-pill btn-sm px-3 py-1.5">Reset</a>
@@ -439,7 +476,7 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
         </div>
 
         <!-- Categories -->
-        <div class="d-flex gap-2 overflow-auto pb-1 mb-2 flex-shrink-0">
+        <div class="pos-category-tabs d-flex gap-2 pb-1 mb-2 flex-shrink-0">
           <a href="pos.php" class="btn btn-sm category-pill <?php echo empty($selected_cat) ? 'btn-dark' : ''; ?>">
             <i class="bi bi-grid-fill me-1"></i> All Products
           </a>
@@ -455,8 +492,12 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
           <div class="row g-3" id="products-grid-container">
             <?php if ($products_result && $products_result->num_rows > 0): ?>
               <?php while ($prod = $products_result->fetch_assoc()): ?>
-                <div class="col-xl-4 col-md-6 col-sm-6 product-item-box" data-sku="<?php echo strtolower($prod['sku'] ?? ''); ?>" data-id="<?php echo $prod['id']; ?>">
-                  <div class="card product-card h-100 <?= $canCreatePosOrders ? '' : 'pos-view-only' ?>" <?php if ($canCreatePosOrders): ?>onclick="addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)"<?php endif; ?>>
+                <div class="col-xl-4 col-md-6 col-sm-6 product-item-box" data-sku="<?php echo e(strtolower($prod['sku'] ?? '')); ?>" data-id="<?php echo (int) $prod['id']; ?>">
+                  <div class="card product-card h-100 <?= $canCreatePosOrders ? '' : 'pos-view-only' ?>" <?php if ($canCreatePosOrders): ?>onclick="addToCart(<?php echo (int) $prod['id']; ?>, <?= htmlspecialchars(
+                      json_encode((string) $prod['name'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT),
+                      ENT_QUOTES,
+                      'UTF-8'
+                  ) ?>, <?php echo (float) $prod['price']; ?>, <?php echo (int) ($prod['stock'] ?? 0); ?>)"<?php endif; ?>>
                     
                     <div class="product-img-wrapper">
                       <img src="../../uploads/<?php echo htmlspecialchars($prod['image'] ?? 'default.jpg'); ?>" alt="Product" onerror="this.src='https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300'">
@@ -484,7 +525,11 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
                           <span class="text-muted small d-block" style="font-size: 10px;">Price</span>
                           <span class="fw-bold text-dark" style="font-size: 0.95rem;"><?php echo htmlspecialchars(formatAppCurrency($prod['price']), ENT_QUOTES, 'UTF-8'); ?></span>
                         </div>
-                        <?php if ($canCreatePosOrders): ?><button class="btn btn-sm btn-outline-dark px-2 py-0.5" style="font-size: 12px;" onclick="event.stopPropagation(); addToCart(<?php echo $prod['id']; ?>, '<?php echo addslashes($prod['name']); ?>', <?php echo $prod['price']; ?>, <?php echo $prod['stock'] ?? 0; ?>)">
+                        <?php if ($canCreatePosOrders): ?><button class="btn btn-sm btn-outline-dark px-2 py-0.5" style="font-size: 12px;" onclick="event.stopPropagation(); addToCart(<?php echo (int) $prod['id']; ?>, <?= htmlspecialchars(
+                            json_encode((string) $prod['name'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT),
+                            ENT_QUOTES,
+                            'UTF-8'
+                        ) ?>, <?php echo (float) $prod['price']; ?>, <?php echo (int) ($prod['stock'] ?? 0); ?>)">
                           <i class="bi bi-plus-lg"></i> Add
                         </button><?php endif; ?>
                       </div>
@@ -578,12 +623,13 @@ $recent_orders = $conn->query("SELECT * FROM orders ORDER BY id DESC LIMIT 5");
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-let cart = [];
+let cart = Array.isArray(window.__posNavigationCart) ? window.__posNavigationCart : [];
+window.__posNavigationCart = cart;
 
 const POS_CURRENCY_SYMBOL = <?= $posCurrencySymbol ?>;
 const POS_TAX_RATE = <?= json_encode($posTaxRate) ?>;
 const POS_CHECKOUT_CSRF = <?= json_encode($_SESSION['pos_checkout_csrf'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-let checkoutInProgress = false;
+let checkoutInProgress = window.__posCheckoutInProgress === true;
 let checkoutRedirecting = false;
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -706,7 +752,9 @@ function clearCart() {
 
 // Render Cart & Totals
 function renderCart() {
+    window.__posNavigationCart = cart;
     let container = document.getElementById('cart-items-container');
+    if (!container) return;
     document.getElementById('clear-cart-button').disabled = cart.length === 0;
     
     if (cart.length === 0) {
@@ -782,6 +830,7 @@ function executeCheckout() {
     const checkoutButton = document.getElementById('posCheckoutButton');
     const isGatewayPayment = ['Online Transfer', 'Card Payment'].includes(paymentMethod);
     checkoutInProgress = true;
+    window.__posCheckoutInProgress = true;
     checkoutButton.disabled = true;
 
     Swal.fire({
@@ -840,7 +889,11 @@ function executeCheckout() {
     .finally(() => {
         if (checkoutRedirecting) return;
         checkoutInProgress = false;
-        checkoutButton.disabled = false;
+        window.__posCheckoutInProgress = false;
+        const activeCheckoutButton = document.getElementById('posCheckoutButton');
+        if (activeCheckoutButton) {
+            activeCheckoutButton.disabled = false;
+        }
     });
 }
 
@@ -900,11 +953,30 @@ function fetchProductByBarcode(barcode) {
         })
         .catch(error => console.error('Fetch Error:', error));
 }
+
+const paymentMethodSelect = document.getElementById('payment-method');
+const checkoutButton = document.getElementById('posCheckoutButton');
+if (checkoutButton) {
+    checkoutButton.disabled = checkoutInProgress;
+}
+if (paymentMethodSelect) {
+    paymentMethodSelect.value = window.__posNavigationPaymentMethod || paymentMethodSelect.value;
+    window.__posNavigationPaymentMethod = paymentMethodSelect.value;
+    paymentMethodSelect.addEventListener('change', function () {
+        window.__posNavigationPaymentMethod = this.value;
+    });
+}
+if (document.getElementById('cart-items-container')) {
+    renderCart();
+}
 </script>
 
 <?php if (isset($_SESSION['swal_success'])): ?>
 <script>
-    Swal.fire({ icon: 'success', title: 'Success!', text: '<?php echo $_SESSION['swal_success']; ?>', timer: 2000, showConfirmButton: false });
+    Swal.fire({ icon: 'success', title: 'Success!', text: <?= json_encode(
+        (string) $_SESSION['swal_success'],
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ) ?>, timer: 2000, showConfirmButton: false });
 </script>
 <?php unset($_SESSION['swal_success']); endif; ?>
 

@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 // Create stock_history table if not exists

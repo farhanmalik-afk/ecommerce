@@ -9,6 +9,10 @@ while (in_array(basename($appBase), $moduleFolders, true)) {
 
 $currentPage = basename($scriptPath);
 $currentDirectory = basename(dirname($scriptPath));
+$sidebarUserName = trim((string) ($_SESSION['admin_name'] ?? ''));
+if ($sidebarUserName === '') {
+    $sidebarUserName = trim((string) ($_SESSION['admin_email'] ?? 'Admin'));
+}
 $canViewDashboard = appUserCan('dashboard');
 $activeModule = match ($currentPage) {
     'trash.php' => 'trash',
@@ -90,6 +94,15 @@ $activeModule = match ($currentPage) {
                 </a>
             </li>
         <?php endforeach; ?>
+        <li class="sidebar-mobile-logout d-lg-none">
+            <form method="post" action="<?= htmlspecialchars($appBase, ENT_QUOTES, 'UTF-8') ?>/logout.php">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
+                <button type="submit" class="nav-link w-100 text-start">
+                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i>Log out
+                    <span class="sidebar-mobile-user-name" title="<?= htmlspecialchars($sidebarUserName, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($sidebarUserName, ENT_QUOTES, 'UTF-8') ?></span>
+                </button>
+            </form>
+        </li>
      </ul>
 
     </div>

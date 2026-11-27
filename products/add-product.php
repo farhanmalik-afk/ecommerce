@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 $error_msg = "";
@@ -85,21 +84,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } elseif ($imageUpload['size'] > 2 * 1024 * 1024) {
             $error_msg = "Image size must be no larger than 2 MB.";
         } else {
-            $target_dir = "../uploads/";
-            if (!is_dir($target_dir)) { mkdir($target_dir, 0755, true); }
-
-            $image_name = time() . "_" . basename($imageUpload["name"]);
-            $target_file = $target_dir . $image_name;
-            $fileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-
-            $allowed = array("jpg", "jpeg", "png", "webp");
-            if (in_array($fileType, $allowed)) {
-                if (move_uploaded_file($imageUpload["tmp_name"], $target_file)) {
-                    $image = $image_name; 
-                } else {
-                    $error_msg = "Failed to upload image file.";
-                }
-            } else {
+            try {
+                $image = safe_upload($imageUpload, __DIR__ . '/../uploads', 2 * 1024 * 1024);
+            } catch (RuntimeException $exception) {
                 $error_msg = "Only JPG, JPEG, PNG & WEBP formats are allowed.";
             }
         }
@@ -150,6 +137,7 @@ include __DIR__ . '/../layouts/header.php';
 
 <div class="card border-0 shadow-sm p-4">
     <form action="" method="POST" enctype="multipart/form-data" id="productForm" novalidate>
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">Product Name *</label>
@@ -413,13 +401,15 @@ if (origPriceInput) origPriceInput.addEventListener('input', calculateSalePrice)
 if (discountInput) discountInput.addEventListener('input', calculateSalePrice);
 calculateSalePrice();
 
+const productCsrfToken = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+
 nameInput.addEventListener('blur', function() {
     let nameVal = this.value.trim();
     if (nameVal !== "") {
         $.ajax({
             url: 'check-duplicate.php',
             type: 'POST',
-            data: { type: 'name', value: nameVal },
+            data: { type: 'name', value: nameVal, csrf_token: productCsrfToken },
             success: function(response) {
                 isNameUnique = (response.trim() !== "exists");
                 validateNameField();
@@ -434,7 +424,7 @@ skuInput.addEventListener('blur', function() {
         $.ajax({
             url: 'check-duplicate.php',
             type: 'POST',
-            data: { type: 'sku', value: skuVal },
+            data: { type: 'sku', value: skuVal, csrf_token: productCsrfToken },
             success: function(response) {
                 isSkuUnique = (response.trim() !== "exists");
                 validateSkuField();
@@ -474,7 +464,7 @@ document.getElementById('productForm').addEventListener('submit', function(e) {
     $.ajax({
         url: 'check-duplicate.php',
         type: 'POST',
-        data: { type: 'name', value: nameVal },
+        data: { type: 'name', value: nameVal, csrf_token: productCsrfToken },
         success: function(nameResponse) {
             if (nameResponse.trim() === "exists") {
                 nameInput.classList.add('is-invalid');
@@ -488,7 +478,7 @@ document.getElementById('productForm').addEventListener('submit', function(e) {
                 $.ajax({
                     url: 'check-duplicate.php',
                     type: 'POST',
-                    data: { type: 'sku', value: skuVal },
+                    data: { type: 'sku', value: skuVal, csrf_token: productCsrfToken },
                     success: function(skuResponse) {
                         if (skuResponse.trim() === "exists") {
                             skuInput.classList.add('is-invalid');
@@ -534,7 +524,10 @@ document.getElementById('productForm').addEventListener('submit', function(e) {
         Swal.fire({ 
             icon: 'error', 
             title: 'Validation Error', 
-            text: '<?php echo addslashes($error_msg); ?>', 
+            text: <?= json_encode(
+                (string) $error_msg,
+                JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+            ) ?>,
             confirmButtonColor: '#d33' 
         });
     });

@@ -1,8 +1,7 @@
 <?php
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+require_once __DIR__ . '/security.php';
+secure_session_start();
 
 function getCurrentAdminId(): int
 {
@@ -49,13 +48,14 @@ function checkAuth(): void
     global $conn;
     $adminId = filter_var($_SESSION['admin_id'] ?? null, FILTER_VALIDATE_INT);
     if (!$adminId || $adminId < 1) {
-        unset($_SESSION['admin_id'], $_SESSION['admin_role_id'], $_SESSION['admin_email'], $_SESSION['admin_logged_in']);
+        unset($_SESSION['admin_id'], $_SESSION['admin_role_id'], $_SESSION['admin_email'], $_SESSION['admin_logged_in'], $_SESSION['admin_session_token']);
         sendAppError(401, 'Please sign in to continue.');
     }
 
     $stmt = $conn->prepare(
-        "SELECT a.role_id, a.email, a.name, r.is_active
+        "SELECT a.role_id, a.email, a.name, r.is_active, s.token_hash AS active_session_token_hash
          FROM admins a JOIN roles r ON r.id = a.role_id
+         LEFT JOIN admin_sessions s ON s.admin_id = a.id
          WHERE a.id = ? AND a.status = 'Active' LIMIT 1"
     );
     if (!$stmt) {
@@ -78,10 +78,41 @@ function checkAuth(): void
         sendAppError(401, 'Your account or assigned role is inactive. Please contact an administrator.');
     }
 
+    $sessionToken = $_SESSION['admin_session_token'] ?? null;
+    $activeTokenHash = $admin['active_session_token_hash'] ?? null;
+    if (!is_string($sessionToken) || $sessionToken === '' || !is_string($activeTokenHash)
+        || !hash_equals($activeTokenHash, hash('sha256', $sessionToken))) {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_destroy();
+        }
+        sendAppError(401, 'Your session has expired or was replaced. Please sign in again.');
+    }
+
     $_SESSION['admin_role_id'] = (int) $admin['role_id'];
     $_SESSION['admin_email'] = $admin['email'];
     $_SESSION['admin_name'] = $admin['name'];
     $_SESSION['admin_logged_in'] = true;
+
+    if (isset($_SESSION['2fa_pending']) && $_SESSION['2fa_pending'] === true
+        && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'logout.php') {
+        $base = getBaseUrl();
+        header('Location: ' . $base . 'verify-two-factor.php');
+        exit();
+    }
+
+    if (function_exists('ensureTwoFactorSchema')) {
+        ensureTwoFactorSchema($conn);
+    }
+    if (function_exists('isTwoFactorEnabled') && isTwoFactorEnabled($conn, $adminId)
+        && (!function_exists('twoFactorSessionVerified') || !twoFactorSessionVerified($conn, $adminId))
+        && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'logout.php') {
+        $_SESSION['2fa_pending'] = true;
+        $_SESSION['admin_logged_in'] = false;
+        $base = getBaseUrl();
+        header('Location: ' . $base . 'verify-two-factor.php');
+        exit();
+    }
 }
 
 function getBaseUrl(): string
@@ -338,10 +369,10 @@ function logActivity(mysqli $conn, int $adminId, string $action, string $module)
 
 function csrfToken(): string
 {
-    return $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
+    return csrf_token();
 }
 
-function verifyCsrfToken(?string $token): bool
+function verifyCsrfToken($token): bool
 {
-    return is_string($token) && isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    return verify_csrf($token);
 }

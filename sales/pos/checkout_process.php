@@ -2,7 +2,6 @@
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 
-session_start();
 define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../../config.php';
 require_once __DIR__ . '/../../includes/pos-checkout.php';

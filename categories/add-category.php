@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 // Slug generate karne ka function
@@ -76,9 +75,10 @@ $parent = ['Categories', 'categories.php'];
       <div class="col-md-6">
         <div class="card border-0 shadow-sm p-4">
           <?php if (isset($error)): ?>
-            <div class="alert alert-danger"><?php echo $error; ?></div>
+            <div class="alert alert-danger"><?php echo e($error); ?></div>
           <?php endif; ?>
           <form method="POST" action="">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
             <div class="mb-3">
               <label class="form-label fw-bold">Category Name *</label>
               <input type="text" name="name" class="form-control" placeholder="Enter category name (e.g. Mobile Accessories)" required>

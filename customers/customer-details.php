@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 // Check karein ke URL mein id mojood hai ya nahi
@@ -161,8 +160,12 @@ function confirmSendEmail(id) {
           <h5 class="mb-0"><?php echo htmlspecialchars($name); ?></h5>
           <p class="text-muted mb-0"><?php echo htmlspecialchars($email); ?></p>
         </div>
-        <span class="status <?php echo $status_badge_class; ?>"><?php echo $status; ?></span>
-        <?php if (appUserCan('customers', 'edit')): ?><button type="button" class="btn <?php echo $block_btn_class; ?>" onclick="confirmStatusChange(<?php echo $customer['id']; ?>, '<?php echo $status; ?>')">
+        <span class="status <?php echo e($status_badge_class); ?>"><?php echo e($status); ?></span>
+        <?php if (appUserCan('customers', 'edit')): ?><button type="button" class="btn <?php echo e($block_btn_class); ?>" onclick="confirmStatusChange(<?php echo (int) $customer['id']; ?>, <?= htmlspecialchars(
+            json_encode((string) $status, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT),
+            ENT_QUOTES,
+            'UTF-8'
+        ) ?>)">
           <i class="bi <?php echo $block_icon; ?> me-1"></i><?php echo $block_btn_text; ?>
         </button><?php endif; ?>
       </div>
@@ -246,7 +249,10 @@ function confirmStatusChange(id, currentStatus) {
     Swal.fire({
         icon: 'success',
         title: 'Success!',
-        text: '<?php echo $_SESSION['swal_success']; ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['swal_success'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         timer: 2500,
         showConfirmButton: false
     });

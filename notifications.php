@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once __DIR__ . '/config.php';
 $canDeleteNotifications = appUserCan('notifications', 'delete');
 $_SESSION['notification_csrf'] ??= bin2hex(random_bytes(32));

@@ -1,9 +1,8 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/config.php';
+
+use OTPHP\TOTP;
+
 require_once __DIR__ . '/includes/role-management.php';
 
 // 1. Authorization Guard
@@ -11,9 +10,168 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
     sendAppError(403, 'You do not have permission to manage system settings.');
 }
 
-// 2. CSRF Token Initialization
+// 2. CSRF Token Initialization (must run before any POST validation)
 if (empty($_SESSION['settings_csrf'])) {
     $_SESSION['settings_csrf'] = bin2hex(random_bytes(32));
+}
+
+ensureTwoFactorSchema($conn);
+
+/**
+ * Build a clean RFC-compliant otpauth:// URI and QR code image source
+ * compatible with Google Authenticator and Microsoft Authenticator.
+ */
+function buildTwoFactorQrImageSrc(string $secret, string $issuer, string $accountName): string
+{
+    $cleanSecret = strtoupper(preg_replace('/[^A-Z2-7]/i', '', $secret));
+    $cleanIssuer = trim($issuer) !== '' ? trim($issuer) : 'Ecommerce Dashboard';
+    $cleanAccount = trim($accountName) !== '' ? trim($accountName) : 'Admin';
+
+    $label = rawurlencode($cleanIssuer . ':' . $cleanAccount);
+    $otpauthUri = sprintf(
+        'otpauth://totp/%s?secret=%s&issuer=%s&algorithm=SHA1&digits=6&period=30',
+        $label,
+        rawurlencode($cleanSecret),
+        rawurlencode($cleanIssuer)
+    );
+
+    if (function_exists('twoFactorQrDataUri')) {
+        $generated = (string) twoFactorQrDataUri($cleanSecret, $cleanIssuer, $cleanAccount);
+        if ($generated !== '' && str_starts_with($generated, 'data:image/')) {
+            return $generated;
+        }
+    }
+
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&ecc=M&data=' . rawurlencode($otpauthUri);
+}
+
+$twoFactorRecord = getTwoFactorRecord($conn, getCurrentAdminId());
+$twoFactorEnabled = $twoFactorRecord !== null && (int) $twoFactorRecord['is_enabled'] === 1;
+$twoFactorActionMessage = '';
+$twoFactorActionError = '';
+$pendingSetupSecret = $_SESSION['2fa_setup_secret'] ?? null;
+$newBackupCodes = $_SESSION['2fa_new_backup_codes'] ?? [];
+$twoFactorActionFlashAllowed = false;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['two_factor_action'])) {
+    $action = (string) $_POST['two_factor_action'];
+    $postedToken = (string) ($_POST['csrf_token'] ?? '');
+    unset($_SESSION['swal_success'], $_SESSION['swal_error']);
+
+    if (!hash_equals($_SESSION['settings_csrf'], $postedToken)) {
+        $twoFactorActionError = 'Security validation failed (CSRF token mismatch). Please refresh and try again.';
+    } elseif ($action === 'cancel') {
+        $twoFactorActionFlashAllowed = true;
+        unset($_SESSION['2fa_setup_secret']);
+        $pendingSetupSecret = null;
+        $twoFactorActionMessage = 'Two-factor authentication setup was canceled.';
+    } else {
+        $adminId = getCurrentAdminId();
+        $password = (string) ($_POST['confirmation_password'] ?? '');
+        $otpInput = trim((string) ($_POST['otp'] ?? ''));
+        $twoFactorActionFlashAllowed = trim($password) !== ''
+            && (in_array($action, ['begin'], true)
+                || (in_array($action, ['activate', 'disable', 'regenerate'], true)
+                    && preg_match('/^\d{6}$/', $otpInput) === 1));
+        $otpRequired = in_array($action, ['activate', 'disable', 'regenerate'], true);
+
+        if (trim($password) === '') {
+            $twoFactorActionError = 'Enter your current password.';
+        } elseif ($otpRequired && preg_match('/^\d{6}$/', $otpInput) !== 1) {
+            $twoFactorActionError = 'Enter a valid 6-digit authenticator code.';
+        } elseif (!in_array($action, ['begin', 'activate', 'disable', 'regenerate'], true)) {
+            $twoFactorActionError = 'Invalid 2FA action.';
+        } else {
+            $stmt = $conn->prepare('SELECT password_hash FROM admins WHERE id = ? AND status = \'Active\' LIMIT 1');
+            $stmt->bind_param('i', $adminId);
+            $stmt->execute();
+            $passwordHash = (string) ($stmt->get_result()->fetch_column() ?? '');
+            $stmt->close();
+
+            if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
+                $twoFactorActionError = 'The confirmation password is incorrect.';
+            } elseif ($action === 'begin') {
+                $totp = TOTP::generate();
+                $secret = strtoupper(preg_replace('/[^A-Z2-7]/i', '', $totp->getSecret()));
+                $_SESSION['2fa_setup_secret'] = $secret;
+                $pendingSetupSecret = $secret;
+                $twoFactorActionMessage = 'Scan the QR code with Google or Microsoft Authenticator, then enter the 6-digit code.';
+            } elseif ($action === 'activate') {
+                $secret = strtoupper(preg_replace('/[^A-Z2-7]/i', '', (string) ($_SESSION['2fa_setup_secret'] ?? '')));
+                $otp = $otpInput;
+
+                if ($secret === '') {
+                    $twoFactorActionError = 'Start setup again before activating 2FA.';
+                } else {
+                    $totp = TOTP::createFromSecret($secret);
+                    $totp->setDigits(6);
+                    $totp->setPeriod(30);
+                    $totp->setDigest('sha1');
+
+                    if (!$totp->verify($otp, null, 1)) {
+                        $twoFactorActionError = 'The authenticator code is invalid or has expired. Make sure your phone time is set to Automatic.';
+                    } else {
+                        $encrypted = encryptTwoFactorSecret($conn, $secret);
+                        $stmt = $conn->prepare(
+                            'INSERT INTO admin_two_factor (admin_id, secret_encrypted, is_enabled, verified_at)
+                             VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+                             ON DUPLICATE KEY UPDATE secret_encrypted = VALUES(secret_encrypted),
+                             is_enabled = 1, verified_at = CURRENT_TIMESTAMP, totp_last_window = NULL'
+                        );
+                        $stmt->bind_param('is', $adminId, $encrypted);
+                        $stmt->execute();
+                        $stmt->close();
+
+                        $newBackupCodes = generateTwoFactorBackupCodes($conn, $adminId);
+                        $_SESSION['2fa_new_backup_codes'] = $newBackupCodes;
+                        unset($_SESSION['2fa_setup_secret']);
+                        $pendingSetupSecret = null;
+                        $twoFactorEnabled = true;
+                        $_SESSION['2fa_verified_admin_id'] = $adminId;
+                        $_SESSION['2fa_verified_at'] = time();
+                        $_SESSION['2fa_pending'] = false;
+                        $_SESSION['admin_logged_in'] = true;
+                        $twoFactorActionMessage = 'Two-factor authentication is now enabled.';
+                    }
+                }
+            } elseif ($action === 'disable') {
+                $otp = $otpInput;
+                if (!verifyTwoFactorTotp($conn, $adminId, $otp, false)) {
+                    $twoFactorActionError = 'A valid current authenticator code is required to disable 2FA.';
+                } else {
+                    $stmt = $conn->prepare('UPDATE admin_two_factor SET is_enabled = 0, backup_codes_json = NULL, totp_last_window = NULL WHERE admin_id = ?');
+                    $stmt->bind_param('i', $adminId);
+                    $stmt->execute();
+                    $stmt->close();
+                    unset($_SESSION['2fa_new_backup_codes'], $_SESSION['2fa_setup_secret'], $_SESSION['2fa_verified_admin_id'], $_SESSION['2fa_verified_at']);
+                    $twoFactorEnabled = false;
+                    $twoFactorActionMessage = 'Two-factor authentication has been disabled.';
+                }
+            } elseif ($action === 'regenerate') {
+                $otp = $otpInput;
+                if (!verifyTwoFactorTotp($conn, $adminId, $otp, false)) {
+                    $twoFactorActionError = 'A valid current authenticator code is required to regenerate backup codes.';
+                } else {
+                    $newBackupCodes = generateTwoFactorBackupCodes($conn, $adminId);
+                    $_SESSION['2fa_new_backup_codes'] = $newBackupCodes;
+                    $twoFactorActionMessage = 'Recovery codes regenerated. Save the new codes now; old codes are no longer valid.';
+                }
+            } else {
+                $twoFactorActionError = 'Invalid 2FA action.';
+            }
+        }
+    }
+
+    if ($twoFactorActionFlashAllowed && $twoFactorActionMessage !== '') {
+        $_SESSION['swal_success'] = $twoFactorActionMessage;
+        unset($_SESSION['swal_error']);
+    } elseif ($twoFactorActionFlashAllowed && $twoFactorActionError !== '') {
+        $_SESSION['swal_error'] = $twoFactorActionError;
+        unset($_SESSION['swal_success']);
+    }
+
+    header('Location: settings.php?tab=security#two-factor-settings');
+    exit();
 }
 
 // 2.1 AJAX Endpoint for Real-Time Unique Key/Value Check in Database
@@ -22,9 +180,8 @@ if (isset($_GET['ajax_check_setting']) && $_GET['ajax_check_setting'] === '1') {
     $settingKey = trim($_GET['key'] ?? '');
     $settingVal = trim($_GET['val'] ?? '');
 
-    // Allowlist allowed unique settings keys to check against database
     $uniqueAllowedKeys = ['app_name', 'store_name', 'store_email', 'store_phone', 'invoice_prefix'];
-    
+
     if (!in_array($settingKey, $uniqueAllowedKeys, true) || $settingVal === '') {
         echo json_encode(['exists' => false]);
         exit();
@@ -82,7 +239,7 @@ function saveAppSettingsBatch(mysqli $conn, array $pairs): bool
 
 // Settings tabs, including centralized role and module access management.
 $validTabs = [
-    'general', 'store', 'pos', 'security', 'smtp', 'invoices', 
+    'general', 'store', 'pos', 'security', 'smtp', 'invoices',
     'inventory', 'backup', 'payments', 'tax', 'notifications', 'system', 'roles'
 ];
 $activeTab = $_GET['tab'] ?? 'general';
@@ -119,12 +276,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_module'])) {
     $validationError = null;
 
     switch ($module) {
-       case 'general':
+        case 'general':
             $appName = trim($_POST['app_name'] ?? '');
             $pagination = $_POST['default_pagination'] ?? '';
             $currencySymbol = trim($_POST['currency_symbol'] ?? '');
-            $selectedTheme = $_POST['theme'] ?? 'original'; // Theme catch karna
-            
+            $selectedTheme = $_POST['theme'] ?? 'original';
+
             if ($appName === '') {
                 $validationError = 'Application Name is required.';
             } elseif (strlen($appName) > 100) {
@@ -145,11 +302,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_module'])) {
                     'currency_symbol'    => $currencySymbol,
                     'number_formatting'  => trim($_POST['number_formatting'] ?? 'standard'),
                     'default_pagination' => intval($pagination),
-                    // YAHAN THEME SAVE HONE KE LIYE ADD KAREIN:
                     'theme'              => in_array($selectedTheme, ['original', 'navy-gold', 'modern-blue', 'emerald-green', 'purple-style'], true) ? $selectedTheme : 'original',
                 ];
             }
             break;
+
         case 'store':
             $storeName = trim($_POST['store_name'] ?? '');
             $storeEmail = trim($_POST['store_email'] ?? '');
@@ -191,30 +348,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_module'])) {
                     'store_status'      => isset($_POST['store_status']) ? '1' : '0',
                 ];
 
-                if (!empty($_FILES['store_logo']['name']) && $_FILES['store_logo']['error'] === UPLOAD_ERR_OK) {
-                    $allowedMime = ['image/jpeg', 'image/png', 'image/webp'];
-                    $finfo = new finfo(FILEINFO_MIME_TYPE);
-                    $mime = $finfo->file($_FILES['store_logo']['tmp_name']);
-
-                    if (in_array($mime, $allowedMime, true) && $_FILES['store_logo']['size'] <= (2 * 1024 * 1024)) {
-                        $uploadDir = __DIR__ . '/uploads/';
-                        if (!is_dir($uploadDir)) {
-                            mkdir($uploadDir, 0755, true);
-                        }
-                        $ext = $mime === 'image/png' ? 'png' : ($mime === 'image/webp' ? 'webp' : 'jpg');
-                        $filename = 'store_logo_' . time() . '.' . $ext;
-                        if (move_uploaded_file($_FILES['store_logo']['tmp_name'], $uploadDir . $filename)) {
+                if (isset($_FILES['store_logo']) && $_FILES['store_logo']['error'] !== UPLOAD_ERR_NO_FILE) {
+                    if ($_FILES['store_logo']['error'] !== UPLOAD_ERR_OK) {
+                        $validationError = 'Invalid image file type or file size exceeds 2MB limit.';
+                    } elseif ($_FILES['store_logo']['size'] > 2 * 1024 * 1024) {
+                        $validationError = 'Invalid image file type or file size exceeds 2MB limit.';
+                    } else {
+                        try {
+                            $filename = safe_upload($_FILES['store_logo'], __DIR__ . '/uploads', 2 * 1024 * 1024);
                             $updates['store_logo'] = $filename;
                             $_SESSION['store_logo'] = $filename;
+                        } catch (RuntimeException $exception) {
+                            $validationError = 'Invalid image file type or file size exceeds 2MB limit.';
                         }
-                    } else {
-                        $validationError = 'Invalid image file type or file size exceeds 2MB limit.';
                     }
                 }
             }
             break;
 
-       case 'pos':
+        case 'pos':
             $discount = $_POST['pos_default_discount'] ?? '';
             if (!is_numeric($discount) || floatval($discount) < 0 || floatval($discount) > 100) {
                 $validationError = 'POS default discount must be a positive number between 0 and 100.';
@@ -290,13 +442,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_module'])) {
                     'smtp_from_email' => $senderEmail,
                     'smtp_enabled'    => isset($_POST['smtp_enabled']) ? '1' : '0',
                 ];
-                
+
                 if (isset($_POST['send_test_email']) && $_POST['send_test_email'] === '1') {
                     $testRecipient = trim($_POST['test_email_recipient'] ?? '');
                     if (filter_var($testRecipient, FILTER_VALIDATE_EMAIL)) {
                         $headers = 'From: ' . ($senderName ?: 'Store') . ' <' . ($senderEmail ?: 'no-reply@store.com') . ">\r\n";
                         $headers .= "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
-                        
+
                         $sent = @mail(
                             $testRecipient,
                             'Test Email from ' . ($senderName ?: 'Store'),
@@ -366,7 +518,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_module'])) {
                 }
                 $backupFilename = 'backup_' . date('Y-m-d_H-i-s') . '.sql';
                 $backupPath = $backupDir . $backupFilename;
-                
+
                 $sqlDump = "-- E-commerce Admin Database Backup Snapshot\n-- Generated: " . date('Y-m-d H:i:s') . "\n\n";
                 $tablesRes = $conn->query("SHOW TABLES");
                 if ($tablesRes) {
@@ -497,7 +649,7 @@ $pageTitle = 'System Settings Center';
 include __DIR__ . '/layouts/header.php';
 ?>
 <style>
-    .settings-container { padding-top: 1rem; padding-bottom: 2.5rem; }
+    .settings-container { padding-top: 0; padding-bottom: 2.5rem; }
 
     #mobileSettingsCategory {
         background-color: var(--surface, #ffffff);
@@ -549,22 +701,21 @@ include __DIR__ . '/layouts/header.php';
         background-color: var(--scrollbar-track, rgba(20, 36, 61, 0.06));
         border-radius: 999px;
     }
-    
-    /* Row ko stretch karne ke liye taake dono columns barabar height lein */
+
     .settings-row { display: flex; flex-wrap: wrap; align-items: stretch; }
 
     .settings-sidebar-col { display: flex; flex-direction: column; }
-    .settings-sidebar-card { 
-        background: #ffffff; 
+    .settings-sidebar-card {
+        background: #ffffff;
         border: 1px solid var(--border);
-        border-radius: 12px; 
-        box-shadow: 0 4px 18px rgba(20, 36, 61, 0.05); 
-        height: 100%; 
-        display: flex; 
-        flex-direction: column; 
+        border-radius: 12px;
+        box-shadow: 0 4px 18px rgba(20, 36, 61, 0.05);
+        height: 100%;
+        display: flex;
+        flex-direction: column;
         padding: 0.75rem;
     }
-    
+
     .settings-nav-pills { display: flex; flex-direction: column; gap: 0.25rem; }
     .settings-nav-pills .nav-link { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0.95rem; color: var(--dark); font-weight: 500; font-size: 0.9rem; border-radius: 8px; transition: all 0.2s ease; }
     .settings-nav-pills .nav-link i { font-size: 1.05rem; color: #64748b; transition: color 0.2s ease; }
@@ -572,22 +723,22 @@ include __DIR__ . '/layouts/header.php';
     .settings-nav-pills .nav-link:hover i { color: var(--gold); }
     .settings-nav-pills .nav-link.active, .settings-nav-pills .nav-link.active:hover { background-color: var(--dark) !important; color: #ffffff !important; font-weight: 600; box-shadow: var(--shadow); }
     .settings-nav-pills .nav-link.active i, .settings-nav-pills .nav-link.active:hover i { color: var(--gold) !important; }
-    
+
     .settings-content-col { display: flex; flex-direction: column; }
     .settings-pane { display: flex; flex-direction: column; height: 100%; }
-    
-   .settings-content-card {
-        background: #ffffff; 
+
+    .settings-content-card {
+        background: #ffffff;
         border: 1px solid var(--border);
-        border-radius: 12px; 
-        box-shadow: 0 4px 18px rgba(20, 36, 61, 0.05); 
-        overflow: hidden; 
-        display: flex; 
-        flex-direction: column; 
-        height: 100%; 
-        min-height: 600px; 
+        border-radius: 12px;
+        box-shadow: 0 4px 18px rgba(20, 36, 61, 0.05);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 600px;
     }
-    
+
     #pane-roles {
         height: auto;
         min-height: 0;
@@ -607,9 +758,9 @@ include __DIR__ . '/layouts/header.php';
     .settings-card-header { padding: 1.25rem 1.75rem; border-bottom: 1px solid var(--border); background: var(--bg); flex-shrink: 0; }
     .settings-card-header h2 { font-family: 'Playfair Display', Georgia, serif; font-size: 1.35rem; font-weight: 700; color: var(--dark); margin: 0 0 0.25rem 0; }
     .settings-card-header p { font-size: 0.88rem; color: #64748b; margin: 0; }
-    
+
     .settings-card-body { padding: 1.75rem; flex: 1 1 auto; overflow-y: auto; }
-    
+
     .settings-card-footer { padding: 1.15rem 1.75rem; background: var(--bg); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; flex-shrink: 0; margin-top: auto; }
 
     @media (min-width: 992px) {
@@ -756,10 +907,10 @@ include __DIR__ . '/layouts/header.php';
             overflow: visible;
         }
     }
-    
+
     .btn-settings-save { background-color: var(--dark); border-color: var(--dark); color: #ffffff; font-weight: 600; padding: 0.55rem 1.5rem; border-radius: 8px; transition: all 0.2s ease; }
     .btn-settings-save:hover { background-color: var(--gold); border-color: var(--gold); color: var(--dark); }
-    
+
     .is-invalid-custom { border-color: #dc3545 !important; padding-right: calc(1.5em + 0.75rem); background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23dc3545'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath stroke-linejoin='round' d='M5.8 3.6h.4L6 6.5z'/%3e%3ccircle cx='6' cy='8.2' r='.6' fill='%23dc3545' stroke='none'/%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right calc(0.375em + 0.1875rem) center; background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem); }
     .invalid-feedback-custom { display: none; width: 100%; margin-top: 0.25rem; font-size: 0.875em; color: #dc3545; }
     .input-group .btn-outline-secondary { border-color: #ced4da; color: #64748b; }
@@ -851,15 +1002,15 @@ include __DIR__ . '/layouts/header.php';
                                 <div class="invalid-feedback-custom">Application Name is required (max 100 chars).</div>
                             </div>
                             <div class="col-md-6">
-    <label class="form-label fw-semibold">Global Dashboard Theme Preset</label>
-    <select name="theme" class="form-select">
-        <option value="original" <?= (($appSettings['theme'] ?? 'original') === 'original') ? 'selected' : '' ?>>1. Original Theme (Navy Blue + Gold + Cream)</option>
-        <option value="navy-gold" <?= (($appSettings['theme'] ?? '') === 'navy-gold') ? 'selected' : '' ?>>2. Navy Gold (Premium Luxury)</option>
-        <option value="modern-blue" <?= (($appSettings['theme'] ?? '') === 'modern-blue') ? 'selected' : '' ?>>3. Modern Blue (Corporate Professional)</option>
-        <option value="emerald-green" <?= (($appSettings['theme'] ?? '') === 'emerald-green') ? 'selected' : '' ?>>4. Emerald Green (Elegant Business)</option>
-        <option value="purple-style" <?= (($appSettings['theme'] ?? '') === 'purple-style') ? 'selected' : '' ?>>5. Purple Style (Modern Premium)</option>
-    </select>
-</div>
+                                <label class="form-label fw-semibold">Global Dashboard Theme Preset</label>
+                                <select name="theme" class="form-select">
+                                    <option value="original" <?= (($appSettings['theme'] ?? 'original') === 'original') ? 'selected' : '' ?>>1. Original Theme (Navy Blue + Gold + Cream)</option>
+                                    <option value="navy-gold" <?= (($appSettings['theme'] ?? '') === 'navy-gold') ? 'selected' : '' ?>>2. Navy Gold (Premium Luxury)</option>
+                                    <option value="modern-blue" <?= (($appSettings['theme'] ?? '') === 'modern-blue') ? 'selected' : '' ?>>3. Modern Blue (Corporate Professional)</option>
+                                    <option value="emerald-green" <?= (($appSettings['theme'] ?? '') === 'emerald-green') ? 'selected' : '' ?>>4. Emerald Green (Elegant Business)</option>
+                                    <option value="purple-style" <?= (($appSettings['theme'] ?? '') === 'purple-style') ? 'selected' : '' ?>>5. Purple Style (Modern Premium)</option>
+                                </select>
+                            </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Interface Language</label>
                                 <select name="language" class="form-select">
@@ -867,7 +1018,6 @@ include __DIR__ . '/layouts/header.php';
                                     <option value="ur" <?= (($appSettings['language'] ?? 'en') === 'ur') ? 'selected' : '' ?>>Urdu — اردو (UR)</option>
                                 </select>
                             </div>
-                            
                             <div class="col-md-6">
                                 <label class="form-label fw-semibold">Default Language Fallback</label>
                                 <select name="default_language" class="form-select">
@@ -992,88 +1142,88 @@ include __DIR__ . '/layouts/header.php';
             </div>
             <?php endif; ?>
 
-           <!-- 3. POS MODULE -->
-<?php if ($canViewSettingsTab('pos')): ?><div class="settings-pane <?= $activeTab === 'pos' ? '' : 'd-none' ?>" id="pane-pos">
-    <form method="POST" action="settings.php?tab=pos" class="settings-content-card" data-module="pos">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
-        <input type="hidden" name="settings_module" value="pos">
-        <div class="settings-card-header">
-            <h2>POS &amp; Terminal Settings</h2>
-            <p>Master POS activation, layout presets, checkout payment toggles, and receipt formats.</p>
-        </div>
-        <div class="settings-card-body">
-            <!-- Master POS Enable Switch -->
-            <div class="p-3 mb-4 border rounded-3 bg-light">
-                <div class="form-check form-switch m-0">
-                    <input class="form-check-input" type="checkbox" id="pos_module_enabled" name="pos_module_enabled" value="1" <?= (($appSettings['pos_module_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
-                    <label class="form-check-label fw-bold text-dark" for="pos_module_enabled">Enable POS Module (Master Switch)</label>
-                </div>
-                <small class="text-muted d-block mt-1">Turn off to temporarily disable POS access across the entire admin dashboard.</small>
-            </div>
+            <!-- 3. POS MODULE -->
+            <?php if ($canViewSettingsTab('pos')): ?><div class="settings-pane <?= $activeTab === 'pos' ? '' : 'd-none' ?>" id="pane-pos">
+                <form method="POST" action="settings.php?tab=pos" class="settings-content-card" data-module="pos">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="settings_module" value="pos">
+                    <div class="settings-card-header">
+                        <h2>POS &amp; Terminal Settings</h2>
+                        <p>Master POS activation, layout presets, checkout payment toggles, and receipt formats.</p>
+                    </div>
+                    <div class="settings-card-body">
+                        <div class="p-3 mb-4 border rounded-3 bg-light">
+                            <div class="form-check form-switch m-0">
+                                <input class="form-check-input" type="checkbox" id="pos_module_enabled" name="pos_module_enabled" value="1" <?= (($appSettings['pos_module_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                <label class="form-check-label fw-bold text-dark" for="pos_module_enabled">Enable POS Module (Master Switch)</label>
+                            </div>
+                            <small class="text-muted d-block mt-1">Turn off to temporarily disable POS access across the entire admin dashboard.</small>
+                        </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">Default POS Layout</label>
-                    <select name="pos_layout" class="form-select">
-                        <option value="grid" <?= (($appSettings['pos_layout'] ?? 'grid') === 'grid') ? 'selected' : '' ?>>Product Grid</option>
-                        <option value="list" <?= (($appSettings['pos_layout'] ?? '') === 'list') ? 'selected' : '' ?>>Compact List</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">Default POS Payment Method</label>
-                    <select name="pos_default_payment" class="form-select">
-                        <option value="cash" <?= (($appSettings['pos_default_payment'] ?? 'cash') === 'cash') ? 'selected' : '' ?>>Cash</option>
-                        <option value="card" <?= (($appSettings['pos_default_payment'] ?? '') === 'card') ? 'selected' : '' ?>>Card</option>
-                    </select>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">Default POS Discount (%) — Positive Only (0 - 100)</label>
-                    <input type="number" step="0.01" min="0" max="100" name="pos_default_discount" class="form-control" required value="<?= htmlspecialchars($appSettings['pos_default_discount'] ?? '0', ENT_QUOTES, 'UTF-8') ?>">
-                    <div class="invalid-feedback-custom">Must be a non-negative number between 0 and 100.</div>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">Receipt Format Width</label>
-                    <select name="receipt_format" class="form-select">
-                        <option value="80mm" <?= (($appSettings['receipt_format'] ?? '80mm') === '80mm') ? 'selected' : '' ?>>80mm Thermal Printer</option>
-                        <option value="58mm" <?= (($appSettings['receipt_format'] ?? '') === '58mm') ? 'selected' : '' ?>>58mm Pocket Printer</option>
-                        <option value="a4" <?= (($appSettings['receipt_format'] ?? '') === 'a4') ? 'selected' : '' ?>>Standard A4 Invoice</option>
-                    </select>
-                </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Default POS Layout</label>
+                                <select name="pos_layout" class="form-select">
+                                    <option value="grid" <?= (($appSettings['pos_layout'] ?? 'grid') === 'grid') ? 'selected' : '' ?>>Product Grid</option>
+                                    <option value="list" <?= (($appSettings['pos_layout'] ?? '') === 'list') ? 'selected' : '' ?>>Compact List</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Default POS Payment Method</label>
+                                <select name="pos_default_payment" class="form-select">
+                                    <option value="cash" <?= (($appSettings['pos_default_payment'] ?? 'cash') === 'cash') ? 'selected' : '' ?>>Cash</option>
+                                    <option value="card" <?= (($appSettings['pos_default_payment'] ?? '') === 'card') ? 'selected' : '' ?>>Card</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Default POS Discount (%) — Positive Only (0 - 100)</label>
+                                <input type="number" step="0.01" min="0" max="100" name="pos_default_discount" class="form-control" required value="<?= htmlspecialchars($appSettings['pos_default_discount'] ?? '0', ENT_QUOTES, 'UTF-8') ?>">
+                                <div class="invalid-feedback-custom">Must be a non-negative number between 0 and 100.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Receipt Format Width</label>
+                                <select name="receipt_format" class="form-select">
+                                    <option value="80mm" <?= (($appSettings['receipt_format'] ?? '80mm') === '80mm') ? 'selected' : '' ?>>80mm Thermal Printer</option>
+                                    <option value="58mm" <?= (($appSettings['receipt_format'] ?? '') === '58mm') ? 'selected' : '' ?>>58mm Pocket Printer</option>
+                                    <option value="a4" <?= (($appSettings['receipt_format'] ?? '') === 'a4') ? 'selected' : '' ?>>Standard A4 Invoice</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-3 pt-2 border-top">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="pos_cash_enabled" name="pos_cash_enabled" value="1" <?= (($appSettings['pos_cash_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="pos_cash_enabled">Enable Cash Payment Mode</label>
+                                </div>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="pos_card_enabled" name="pos_card_enabled" value="1" <?= (($appSettings['pos_card_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="pos_card_enabled">Enable Card Payment Mode</label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="pos_cust_select" name="pos_cust_select" value="1" <?= (($appSettings['pos_cust_select'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="pos_cust_select">Enable Customer Selection Prompt</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="pos_barcode" name="pos_barcode" value="1" <?= (($appSettings['pos_barcode'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="pos_barcode">Enable Barcode Scanner Integration</label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="pos_search" name="pos_search" value="1" <?= (($appSettings['pos_search'] ?? '1') === '1') ? 'checked' : '' ?>>
+                                    <label class="form-check-label fw-semibold" for="pos_search">Enable Live Product Search Filter</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-card-footer">
+                        <span class="text-muted small">Controls POS terminal availability and checkout settings.</span>
+                        <?php if (appUserCan('settings_pos', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save POS</button><?php endif; ?>
+                    </div>
+                </form>
             </div>
-            <div class="row g-3 pt-2 border-top">
-                <div class="col-md-6">
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="pos_cash_enabled" name="pos_cash_enabled" value="1" <?= (($appSettings['pos_cash_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
-                        <label class="form-check-label fw-semibold" for="pos_cash_enabled">Enable Cash Payment Mode</label>
-                    </div>
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="pos_card_enabled" name="pos_card_enabled" value="1" <?= (($appSettings['pos_card_enabled'] ?? '1') === '1') ? 'checked' : '' ?>>
-                        <label class="form-check-label fw-semibold" for="pos_card_enabled">Enable Card Payment Mode</label>
-                    </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="pos_cust_select" name="pos_cust_select" value="1" <?= (($appSettings['pos_cust_select'] ?? '1') === '1') ? 'checked' : '' ?>>
-                        <label class="form-check-label fw-semibold" for="pos_cust_select">Enable Customer Selection Prompt</label>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="form-check form-switch mb-2">
-                        <input class="form-check-input" type="checkbox" id="pos_barcode" name="pos_barcode" value="1" <?= (($appSettings['pos_barcode'] ?? '1') === '1') ? 'checked' : '' ?>>
-                        <label class="form-check-label fw-semibold" for="pos_barcode">Enable Barcode Scanner Integration</label>
-                    </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="pos_search" name="pos_search" value="1" <?= (($appSettings['pos_search'] ?? '1') === '1') ? 'checked' : '' ?>>
-                        <label class="form-check-label fw-semibold" for="pos_search">Enable Live Product Search Filter</label>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="settings-card-footer">
-            <span class="text-muted small">Controls POS terminal availability and checkout settings.</span>
-            <?php if (appUserCan('settings_pos', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save POS</button><?php endif; ?>
-        </div>
-    </form>
-</div>
-<?php endif; ?>
+            <?php endif; ?>
+
             <!-- 4. SECURITY MODULE -->
             <?php if ($canViewSettingsTab('security')): ?><div class="settings-pane <?= $activeTab === 'security' ? '' : 'd-none' ?>" id="pane-security">
                 <form method="POST" action="settings.php?tab=security" class="settings-content-card" data-module="security">
@@ -1119,6 +1269,120 @@ include __DIR__ . '/layouts/header.php';
                         <?php if (appUserCan('settings_security', 'edit')): ?><button type="submit" class="btn btn-settings-save">Save Security</button><?php endif; ?>
                     </div>
                 </form>
+
+                <section class="settings-content-card mt-4" id="two-factor-settings">
+                    <div class="settings-card-header">
+                        <h2>Two-Factor Authentication</h2>
+                        <p>Protect your account with Google or Microsoft Authenticator using a 6-digit TOTP code.</p>
+                    </div>
+                    <div class="settings-card-body">
+                        <?php if ($twoFactorEnabled): ?>
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+                                <div>
+                                    <span class="badge rounded-pill text-bg-success px-3 py-2"><i class="bi bi-shield-check me-1"></i> Enabled</span>
+                                    <p class="text-muted small mb-0 mt-2">Your account requires a verification code after your password.</p>
+                                </div>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-lg-6">
+                                    <form method="POST" action="settings.php?tab=security#two-factor-settings" class="border rounded p-3 h-100 two-factor-form" novalidate>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="two_factor_action" value="disable">
+                                        <h3 class="h6 fw-bold">Disable Two-Factor Authentication</h3>
+                                        <p class="small text-muted">Confirm your password and current authenticator code.</p>
+                                        <label class="form-label">Confirmation Password</label>
+                                        <input type="password" name="confirmation_password" class="form-control mb-2" autocomplete="current-password" data-two-factor-password>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="password" aria-live="polite"></div>
+                                        <label class="form-label">Authenticator Code</label>
+                                        <input type="text" name="otp" class="form-control mb-3" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-two-factor-otp>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="otp" aria-live="polite"></div>
+                                        <button type="submit" class="btn btn-outline-danger">Disable 2FA</button>
+                                    </form>
+                                </div>
+                                <div class="col-lg-6">
+                                    <form method="POST" action="settings.php?tab=security#two-factor-settings" class="border rounded p-3 h-100 two-factor-form" novalidate>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="two_factor_action" value="regenerate">
+                                        <h3 class="h6 fw-bold">Regenerate Backup Codes</h3>
+                                        <p class="small text-muted">Existing codes become invalid immediately.</p>
+                                        <label class="form-label">Confirmation Password</label>
+                                        <input type="password" name="confirmation_password" class="form-control mb-2" autocomplete="current-password" data-two-factor-password>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="password" aria-live="polite"></div>
+                                        <label class="form-label">Authenticator Code</label>
+                                        <input type="text" name="otp" class="form-control mb-3" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-two-factor-otp>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="otp" aria-live="polite"></div>
+                                        <button type="submit" class="btn btn-settings-save">Generate New Codes</button>
+                                    </form>
+                                </div>
+                            </div>
+                        <?php elseif ($pendingSetupSecret): ?>
+                            <?php
+                            $setupAdminName = (string) ($_SESSION['admin_email'] ?? 'Admin');
+                            $issuer = (string) ($appSettings['store_name'] ?? $appSettings['app_name'] ?? 'Ecommerce Dashboard');
+                            $qrData = buildTwoFactorQrImageSrc($pendingSetupSecret, $issuer, $setupAdminName);
+                            ?>
+                            <div class="row g-4 align-items-center">
+                                <div class="col-md-5 text-center">
+                                    <img src="<?= htmlspecialchars($qrData, ENT_QUOTES, 'UTF-8') ?>" alt="Authenticator QR setup code" class="img-fluid rounded border bg-white p-2" style="max-width:240px;">
+                                    <p class="small text-muted mt-2 mb-0">Open Google or Microsoft Authenticator, tap <strong>+</strong>, and scan this QR code.</p>
+                                </div>
+                                <div class="col-md-7">
+                                    <form method="POST" action="settings.php?tab=security#two-factor-settings" class="two-factor-form" novalidate>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="two_factor_action" value="activate">
+                                        <label class="form-label fw-semibold">Confirmation Password</label>
+                                        <input type="password" name="confirmation_password" class="form-control mb-3" autocomplete="current-password" data-two-factor-password>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="password" aria-live="polite"></div>
+                                        <label class="form-label fw-semibold">6-Digit Authenticator Code</label>
+                                        <input type="text" name="otp" class="form-control form-control-lg text-center letter-spacing" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" data-two-factor-otp>
+                                        <div class="invalid-feedback-custom" data-two-factor-feedback="otp" aria-live="polite"></div>
+                                        <div class="d-flex flex-wrap gap-2 mt-3">
+                                            <button type="submit" class="btn btn-settings-save">Verify &amp; Enable 2FA</button>
+                                        </div>
+                                    </form>
+                                    <form method="POST" action="settings.php?tab=security#two-factor-settings" class="mt-2" novalidate data-two-factor-cancel>
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="two_factor_action" value="cancel">
+                                        <button type="submit" class="btn btn-sm btn-link text-muted px-0">Cancel Setup</button>
+                                    </form>
+                                    <p class="small text-muted mt-2 mb-0"><strong>Manual key:</strong> <code style="user-select:all;"><?= htmlspecialchars($pendingSetupSecret, ENT_QUOTES, 'UTF-8') ?></code></p>
+                                </div>
+                            </div>
+                        <?php else: ?>
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                                <div>
+                                    <span class="badge rounded-pill text-bg-secondary px-3 py-2"><i class="bi bi-shield me-1"></i> Disabled</span>
+                                    <p class="text-muted small mb-0 mt-2">Add a second verification step to every sign-in.</p>
+                                </div>
+                                <form method="POST" action="settings.php?tab=security#two-factor-settings" class="two-factor-form" novalidate>
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['settings_csrf'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="two_factor_action" value="begin">
+                                    <label class="form-label small mb-1">Confirmation Password</label>
+                                    <div class="d-flex gap-2">
+                                        <div class="flex-grow-1">
+                                            <input type="password" name="confirmation_password" class="form-control" autocomplete="current-password" data-two-factor-password>
+                                            <div class="invalid-feedback-custom" data-two-factor-feedback="password" aria-live="polite"></div>
+                                        </div>
+                                        <button type="submit" class="btn btn-settings-save text-nowrap">Set Up 2FA</button>
+                                    </div>
+                                </form>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($newBackupCodes)): ?>
+                            <div class="border rounded p-3 mt-4" style="background:var(--surface);">
+                                <h3 class="h6 fw-bold">Save Your Backup Codes</h3>
+                                <p class="small text-muted">Store these one-time recovery codes securely. They are shown once.</p>
+                                <div class="row g-2">
+                                    <?php foreach ($newBackupCodes as $code): ?>
+                                        <div class="col-6 col-md-4 col-lg-3"><code class="d-block border rounded px-2 py-2 text-center"><?= htmlspecialchars($code, ENT_QUOTES, 'UTF-8') ?></code></div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </section>
+
                 <?php if (isSuperAdmin() && appUserCan('settings', 'manage')): ?>
                     <section class="settings-content-card mt-4">
                         <div class="settings-card-header"><h2>Role Access Management</h2><p>Manage roles, permissions, and module availability in one place.</p></div>
@@ -1664,7 +1928,6 @@ if (initiallyActiveSettingsLink) {
     });
 }
 
-// Password Eye Toggle Function
 function togglePasswordVisibility(fieldId, btn) {
     const field = document.getElementById(fieldId);
     const icon = btn.querySelector('i');
@@ -1679,9 +1942,82 @@ function togglePasswordVisibility(fieldId, btn) {
     }
 }
 
-// REAL-TIME STRICT VALIDATION & LIVE DATABASE CHECK ENGINE
 document.addEventListener('DOMContentLoaded', function() {
-    // 1. Strict key blocking on number inputs (preventing '-', '+', 'e', 'E')
+    const twoFactorSection = document.getElementById('two-factor-settings');
+    if (twoFactorSection) {
+        const twoFactorForms = twoFactorSection.querySelectorAll('form.two-factor-form');
+
+        function validateTwoFactorField(input, showError) {
+            const isPassword = input.hasAttribute('data-two-factor-password');
+            const isValid = isPassword
+                ? input.value.trim() !== ''
+                : /^\d{6}$/.test(input.value.trim());
+            const feedbackType = isPassword ? 'password' : 'otp';
+            const feedback = input.form.querySelector('[data-two-factor-feedback="' + feedbackType + '"]');
+
+            input.classList.toggle('is-invalid-custom', !isValid && showError);
+            input.setAttribute('aria-invalid', !isValid && showError ? 'true' : 'false');
+            if (feedback) {
+                feedback.textContent = !isValid && showError
+                    ? (isPassword ? 'Enter your current password.' : 'Enter exactly 6 digits.')
+                    : '';
+                feedback.style.display = !isValid && showError ? 'block' : 'none';
+            }
+            return isValid;
+        }
+
+        twoFactorForms.forEach(function(form) {
+            const fields = form.querySelectorAll('[data-two-factor-password], [data-two-factor-otp]');
+
+            fields.forEach(function(input) {
+                input.addEventListener('input', function() {
+                    validateTwoFactorField(input, true);
+                });
+                input.addEventListener('blur', function() {
+                    validateTwoFactorField(input, true);
+                });
+                validateTwoFactorField(input, false);
+            });
+
+            form.addEventListener('submit', function(event) {
+                let valid = true;
+                let firstInvalid = null;
+                fields.forEach(function(input) {
+                    if (!validateTwoFactorField(input, true)) {
+                        valid = false;
+                        firstInvalid = firstInvalid || input;
+                    }
+                });
+                if (!valid) {
+                    event.preventDefault();
+                    fields.forEach(function(input) {
+                        if (!validateTwoFactorField(input, true)) {
+                            input.value = '';
+                        }
+                    });
+                    firstInvalid.focus();
+                }
+            });
+        });
+
+        const cancelForm = twoFactorSection.querySelector('[data-two-factor-cancel]');
+        if (cancelForm) {
+            cancelForm.addEventListener('submit', function() {
+                twoFactorForms.forEach(function(form) {
+                    form.reset();
+                    form.querySelectorAll('.is-invalid-custom').forEach(function(input) {
+                        input.classList.remove('is-invalid-custom');
+                        input.setAttribute('aria-invalid', 'false');
+                    });
+                    form.querySelectorAll('[data-two-factor-feedback]').forEach(function(feedback) {
+                        feedback.textContent = '';
+                        feedback.style.display = 'none';
+                    });
+                });
+            });
+        }
+    }
+
     document.querySelectorAll('input[type="number"]').forEach(input => {
         input.addEventListener('keydown', function(e) {
             if (e.key === '-' || e.key === '+' || e.key === 'e' || e.key === 'E') {
@@ -1695,7 +2031,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // 2. Strict phone input sanitization
     const phoneInput = document.getElementById('store_phone');
     if (phoneInput) {
         phoneInput.addEventListener('input', function() {
@@ -1712,7 +2047,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 3. Real-time live validation and database check on input & blur for ALL fields
     document.querySelectorAll('form[data-module] input, form[data-module] textarea').forEach(input => {
         if (input.id !== 'store_phone') {
             ['input', 'blur'].forEach(eventType => {
@@ -1723,7 +2057,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 4. Form submission validation check
     document.querySelectorAll('form[data-module]').forEach(form => {
         form.addEventListener('submit', function(event) {
             let isFormValid = true;
@@ -1748,38 +2081,31 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Cache for DB check results to prevent redundant requests on every single keystroke
 const dbCheckCache = {};
 
-// Comprehensive Real-Time Validator with Backend Database Check
 function validateSingleField(input) {
     const val = input.value.trim();
     const name = input.getAttribute('name');
     const type = input.getAttribute('type');
-    const checkUniqueKey = input.getAttribute('data-check-original') !== val ? input.getAttribute('data-check-unique') : null;
     const maxLength = input.getAttribute('maxlength') ? parseInt(input.getAttribute('maxlength'), 10) : null;
     let errorMsg = '';
     let hasError = false;
 
-    // Remove previous error state
     input.classList.remove('is-invalid-custom');
     let container = input.closest('.input-group') || input.parentNode;
     let feedback = container.querySelector('.invalid-feedback-custom') || container.parentNode.querySelector('.invalid-feedback-custom');
     if (feedback) feedback.style.display = 'none';
 
-    // Required fields check
     if (input.hasAttribute('required') && !val) {
         errorMsg = 'This field is required.';
         hasError = true;
     }
 
-    // Maxlength check
     if (!hasError && maxLength && val.length > maxLength) {
         errorMsg = `Cannot exceed ${maxLength} characters.`;
         hasError = true;
     }
 
-    // Format Validations
     if (!hasError && val !== '') {
         if (type === 'number') {
             const num = Number(val);
@@ -1817,16 +2143,14 @@ function validateSingleField(input) {
         }
     }
 
-    // Live Backend Database Check for Duplicate Values
     if (!hasError && input.hasAttribute('data-check-unique') && val !== '') {
         const uniqueKey = input.getAttribute('data-check-unique');
         const cacheKey = uniqueKey + ':' + val;
-        
-        // Store initial value on load to avoid flagging current stored value as duplicate
+
         if (!input.hasAttribute('data-check-original')) {
             input.setAttribute('data-check-original', val);
         }
-        
+
         if (input.getAttribute('data-check-original') !== val) {
             if (dbCheckCache[cacheKey] !== undefined) {
                 if (dbCheckCache[cacheKey]) {
@@ -1834,7 +2158,6 @@ function validateSingleField(input) {
                     hasError = true;
                 }
             } else {
-                // Perform asynchronous AJAX check against database
                 fetch(`settings.php?ajax_check_setting=1&key=${encodeURIComponent(uniqueKey)}&val=${encodeURIComponent(val)}`)
                     .then(response => response.json())
                     .then(data => {
@@ -1892,5 +2215,6 @@ function validateSingleField(input) {
     });
 </script>
 <?php unset($_SESSION['swal_error']); endif; ?>
+
 
 <?php include __DIR__ . '/layouts/footer.php'; ?>

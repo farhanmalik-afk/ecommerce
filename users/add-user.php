@@ -1,6 +1,5 @@
 <?php
 // users/add-user.php
-session_start();
 require_once "../config.php";
 require_once "../includes/rbac.php";
 
@@ -97,23 +96,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } elseif ($avatarUpload['size'] > (2 * 1024 * 1024)) { // Fixed size check multiplication
             $error_msg = "Avatar image size must be no larger than 2 MB.";
         } else {
-            $target_dir = "../uploads/avatars/";
-            if (!is_dir($target_dir)) { mkdir($target_dir, 0755, true); }
-
-            // Clean filename to remove spaces and special characters
-            $safe_filename = preg_replace("/[^a-zA-Z0-9\._-]/", "_", basename($avatarUpload["name"]));
-            $avatar_name = time() . "_" . $safe_filename;
-            $target_file = $target_dir . $avatar_name;
-            $fileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-
-            $allowed = array("jpg", "jpeg", "png", "webp");
-            if (in_array($fileType, $allowed)) {
-                if (move_uploaded_file($avatarUpload["tmp_name"], $target_file)) {
-                    $avatar = $avatar_name; 
-                } else {
-                    $error_msg = "Failed to upload avatar image file.";
-                }
-            } else {
+            try {
+                $avatar = safe_upload($avatarUpload, __DIR__ . '/../uploads/avatars', 2 * 1024 * 1024);
+            } catch (RuntimeException $exception) {
                 $error_msg = "Only JPG, JPEG, PNG & WEBP formats are allowed for avatar.";
             }
         }
@@ -487,7 +472,10 @@ document.getElementById('addUserForm').addEventListener('submit', function(e) {
         Swal.fire({ 
             icon: 'error', 
             title: 'Validation Error', 
-            text: '<?php echo addslashes($error_msg); ?>', 
+            text: <?= json_encode(
+                (string) $error_msg,
+                JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+            ) ?>,
             confirmButtonColor: '#d33' 
         });
     });

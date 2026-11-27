@@ -1,0 +1,51 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?:includes|backups|config|layouts)(?:/|$) - [F,NC,L]
+    RewriteRule ^users/users-content\.php$ - [F,NC,L]
+    RewriteRule ^config(?:\.local)?\.php$ - [F,NC,L]
+    RewriteRule (^|/)\.env(?:\..*)?$ - [F,NC,L]
+    RewriteRule \.sql$ - [F,NC,L]
+    RewriteRule ^uploads/.*\.(?:php[0-9]*|phtml|pht|phar)(?:/|$) - [F,NC,L]
+</IfModule>
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "(?i)^(?:\.env(?:\..*)?|.*\.sql|config(?:\.local)?\.php)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(?i)^(?:\.env(?:\..*)?|.*\.sql|config(?:\.local)?\.php)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+<IfModule php_module>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value session.use_strict_mode 1
+    php_value session.use_only_cookies 1
+    php_value session.cookie_httponly 1
+    php_value session.cookie_samesite "Lax"
+</IfModule>
+
+<IfModule mod_php8.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value session.use_strict_mode 1
+    php_value session.use_only_cookies 1
+    php_value session.cookie_httponly 1
+    php_value session.cookie_samesite "Lax"
+</IfModule>
+
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value session.use_strict_mode 1
+    php_value session.use_only_cookies 1
+    php_value session.cookie_httponly 1
+    php_value session.cookie_samesite "Lax"
+</IfModule>

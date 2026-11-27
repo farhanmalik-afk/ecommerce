@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 $canCreateSuppliers = appUserCan('suppliers', 'create');
 
@@ -62,7 +61,7 @@ include "../layouts/header.php";
     </section>
 
     <?php if (!empty($error)): ?>
-        <div class="alert alert-danger"><?php echo $error; ?></div>
+        <div class="alert alert-danger"><?php echo e($error); ?></div>
     <?php endif; ?>
 
     <?php if ($success): ?>

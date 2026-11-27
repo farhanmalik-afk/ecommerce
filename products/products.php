@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 $canCreateProducts = appUserCan('products', 'create');
@@ -288,7 +287,7 @@ include __DIR__ . '/../layouts/header.php';
     <input type="hidden" name="bulk_delete" value="1">
     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div class="table-responsive product-list-responsive">
-      <table class="table table-hover data-table align-middle mb-0" id="productsTable">
+      <table class="table table-hover data-table align-middle mb-0" id="productsTable" data-sortable-table data-sort-columns="Product Name,SKU,Category,Price,Stock">
         <thead class="table-light">
           <tr>
             <?php if ($canDeleteProducts): ?><th class="ps-4 product-select-column d-none">Select</th><?php endif; ?>
@@ -448,6 +447,7 @@ include __DIR__ . '/../layouts/header.php';
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content rounded-4 border-0 shadow">
       <form action="import_products.php" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="modal-header border-0 pb-0">
           <h5 class="fw-bold text-dark"><i class="bi bi-file-earmark-arrow-up me-2 text-success"></i> Import Products (CSV)</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -622,16 +622,21 @@ function confirmStatusChange(id, currentStatus) {
 }
 </script>
 
-<script src="../assets/js/table-sort.js" defer></script>
 <?php if (isset($_SESSION['swal_success'])): ?>
 <script>
-    Swal.fire({ icon: 'success', title: 'Success!', text: '<?php echo $_SESSION['swal_success']; ?>', timer: 2500, showConfirmButton: false });
+    Swal.fire({ icon: 'success', title: 'Success!', text: <?= json_encode(
+        (string) $_SESSION['swal_success'],
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ) ?>, timer: 2500, showConfirmButton: false });
 </script>
 <?php unset($_SESSION['swal_success']); endif; ?>
 
 <?php if (isset($_SESSION['swal_error'])): ?>
 <script>
-    Swal.fire({ icon: 'error', title: 'Error', text: '<?php echo $_SESSION['swal_error']; ?>', confirmButtonColor: '#d33' });
+    Swal.fire({ icon: 'error', title: 'Error', text: <?= json_encode(
+        (string) $_SESSION['swal_error'],
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+    ) ?>, confirmButtonColor: '#d33' });
 </script>
 <?php unset($_SESSION['swal_error']); endif; ?>
 

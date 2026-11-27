@@ -13,6 +13,7 @@ if (!is_string($postedToken) || !isset($_SESSION['csrf_token']) || !hash_equals(
     exit('Invalid request token.');
 }
 
+revokeAdminSession($conn, getCurrentAdminId());
 $_SESSION = [];
 if (ini_get('session.use_cookies')) {
     $cookie = session_get_cookie_params();

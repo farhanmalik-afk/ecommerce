@@ -153,10 +153,6 @@ function detectGlobalSearchIntents(string $query, array $tokens): array
     return array_values(array_unique($intents));
 }
 
-if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
-    session_start();
-}
-
 $rawQuery = $_GET['q'] ?? '';
 if (!is_string($rawQuery)) {
     respondWithSearchResults([], 400, 'error');

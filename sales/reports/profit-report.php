@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../../config.php";
 
 $today = date('Y-m-d');
@@ -7,21 +6,32 @@ $filter_date = $_GET['date'] ?? $today;
 
 // 1. Total Sales Revenue, Cost, and Profit for selected date
 $stmt = $conn->prepare("
-    SELECT 
-        COUNT(o.id) as total_orders,
-        SUM(o.total) as total_revenue,
-        SUM(oi.quantity * p.cost_price) as total_cost
-    FROM orders o
-    JOIN order_items oi ON o.id = oi.order_id
-    JOIN products p ON oi.product_id = p.id
-    WHERE DATE(o.created_at) = ?
+    SELECT
+        COUNT(*) as total_orders,
+        COALESCE(SUM(total), 0) as total_revenue
+    FROM orders
+    WHERE DATE(created_at) = ?
 ");
 $stmt->bind_param("s", $filter_date);
 $stmt->execute();
 $data = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 
 $total_revenue = $data['total_revenue'] ?? 0;
-$total_cost = $data['total_cost'] ?? 0;
+
+$cost_stmt = $conn->prepare("
+    SELECT COALESCE(SUM(oi.quantity * p.cost_price), 0) as total_cost
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.id
+    JOIN products p ON oi.product_id = p.id
+    WHERE DATE(o.created_at) = ?
+");
+$cost_stmt->bind_param("s", $filter_date);
+$cost_stmt->execute();
+$cost_data = $cost_stmt->get_result()->fetch_assoc();
+$cost_stmt->close();
+
+$total_cost = $cost_data['total_cost'] ?? 0;
 $net_profit = $total_revenue - $total_cost;
 $profit_margin = $total_revenue > 0 ? ($net_profit / $total_revenue) * 100 : 0;
 

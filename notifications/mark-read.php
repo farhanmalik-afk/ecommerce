@@ -1,5 +1,4 @@
 <?php
-session_start();
 define('APP_JSON_RESPONSE', true);
 require_once __DIR__ . '/../config.php';
 

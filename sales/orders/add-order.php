@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../../config.php";
 
 $error = '';
@@ -125,6 +124,7 @@ include "../../layouts/header.php";
     <div class="card border-0 shadow-sm col-lg-8 mx-auto">
         <div class="card-body p-4">
             <form action="add-order.php" method="POST" novalidate>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                 <div class="mb-3">
                     <label class="form-label font-weight-bold">Order Number</label>
                     <input type="text" class="form-control" value="<?php echo htmlspecialchars($default_order_no, ENT_QUOTES, 'UTF-8'); ?>" readonly>

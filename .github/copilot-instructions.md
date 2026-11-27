@@ -16,6 +16,7 @@
 - Use password hashing APIs, strict integer validation, `utf8mb4`, transactions for multi-table writes, and soft deletes (`is_deleted`) where the module uses them.
 - Preserve module names, permissions, role management, activity logs, and module-status checks. Do not add routes or database writes outside the existing RBAC model.
 - `config.php` also loads app settings and RBAC and may ensure schema elements at runtime. Read existing patterns before adding a table or column.
+- Central 2FA is in `includes/two-factor.php`; login verification is `verify-two-factor.php`. Keep protected routing through `config.php`/`checkAuth()` and never bypass `admin_logged_in`, `2fa_pending`, or `twoFactorSessionVerified()`.
 
 ## Layout And Design
 - Reuse `layouts/header.php` (loads Bootstrap, icons, fonts, shared CSS/JS) and include `sidebar.php` plus `topbar.php` for dashboard pages.

@@ -1,7 +1,5 @@
 <?php
 // Session start karein taake messages ko manage kiya ja sake
-session_start();
-
 // Database connection include karein
 include "../config.php";
 
@@ -206,7 +204,7 @@ $pageTitle = 'Customers';
           <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
           <?php endif; ?>
           <div class="table-responsive customer-list-responsive">
-            <table class="table data-table align-middle mb-0" id="customersTable">
+            <table class="table data-table align-middle mb-0" id="customersTable" data-sortable-table>
               <thead class="table-light">
                 <tr>
                   <!-- Select column added in header with d-none -->
@@ -384,8 +382,8 @@ $pageTitle = 'Customers';
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="../assets/js/table-sort.js" defer></script>
 
+<script src="../assets/js/table-sort.js" defer></script>
 <script>
 const customerActionCsrf = <?= json_encode(csrfToken(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 function postCustomerAction(action, id) {
@@ -529,7 +527,10 @@ function confirmStatusChange(id, currentStatus) {
     Swal.fire({
         icon: 'success',
         title: 'Success!',
-        text: '<?php echo $_SESSION['swal_success']; ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['swal_success'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         timer: 2500,
         showConfirmButton: false
     });
@@ -541,7 +542,10 @@ function confirmStatusChange(id, currentStatus) {
     Swal.fire({
         icon: 'error',
         title: 'Notice',
-        text: '<?php echo $_SESSION['swal_error']; ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['swal_error'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         confirmButtonColor: '#d33'
     });
 </script>

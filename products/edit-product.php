@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 if (!isset($_GET['id'])) {
@@ -113,15 +112,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 
     if (!$formErrors && $uploadedFile && $uploadedFile['error'] === UPLOAD_ERR_OK) {
-        $target_dir = "../uploads/";
-        if (!is_dir($target_dir)) { mkdir($target_dir, 0755, true); }
-
-        $image_name = bin2hex(random_bytes(8)) . '.' . strtolower(pathinfo($uploadedFile['name'], PATHINFO_EXTENSION));
-        $target_file = $target_dir . $image_name;
-        if (move_uploaded_file($uploadedFile['tmp_name'], $target_file)) {
+        try {
+            $image_name = safe_upload($uploadedFile, __DIR__ . '/../uploads', 2 * 1024 * 1024);
             $image = $image_name;
-            $uploadedImagePath = $target_file;
-        } else {
+            $uploadedImagePath = __DIR__ . '/../uploads/' . $image_name;
+        } catch (RuntimeException $exception) {
             $formErrors['image'] = 'The image could not be saved. Please try again.';
         }
     }
@@ -168,6 +163,7 @@ include __DIR__ . '/../layouts/header.php';
 
 <div class="card border-0 shadow-sm p-4">
     <form action="" method="POST" enctype="multipart/form-data" id="editProductForm" novalidate>
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <?php if (isset($formErrors['form'])): ?>
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($formErrors['form'], ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>

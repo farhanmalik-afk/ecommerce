@@ -1,6 +1,5 @@
 <?php
 // users/edit-user.php
-session_start();
 require_once "../config.php";
 require_once "../includes/rbac.php";
 
@@ -95,49 +94,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $emailCheck->close();
 
             $avatarName = $user['avatar'];
-            if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
-                $fileTmp = $_FILES['avatar']['tmp_name'];
-                $fileName = time() . '_' . preg_replace("/[^a-zA-Z0-9._]/", "", basename($_FILES['avatar']['name']));
-                $uploadDir = '../uploads/avatars/';
-                if (!is_dir($uploadDir)) {
-                    mkdir($uploadDir, 0777, true);
-                }
-                if (move_uploaded_file($fileTmp, $uploadDir . $fileName)) {
-                    if (!empty($user['avatar']) && file_exists($uploadDir . $user['avatar'])) {
-                        @unlink($uploadDir . $user['avatar']);
+            $uploadedAvatar = $_FILES['avatar'] ?? null;
+            $uploadDir = __DIR__ . '/../uploads/avatars/';
+            if ($uploadedAvatar && $uploadedAvatar['error'] !== UPLOAD_ERR_NO_FILE) {
+                if ($uploadedAvatar['error'] !== UPLOAD_ERR_OK) {
+                    $error = 'The avatar upload failed. Please try again.';
+                } elseif ($uploadedAvatar['size'] > 2 * 1024 * 1024) {
+                    $error = 'Avatar image size must be no larger than 2 MB.';
+                } else {
+                    try {
+                        $avatarName = safe_upload($uploadedAvatar, $uploadDir, 2 * 1024 * 1024);
+                        if (!empty($user['avatar']) && file_exists($uploadDir . $user['avatar'])) {
+                            @unlink($uploadDir . $user['avatar']);
+                        }
+                    } catch (RuntimeException $exception) {
+                        $error = 'Choose a JPG, PNG, or WebP avatar image.';
                     }
-                    $avatarName = $fileName;
                 }
             }
 
-            if (!empty($password)) {
-                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                $updateStmt = $conn->prepare("UPDATE admins SET name = ?, email = ?, password_hash = ?, phone = ?, address = ?, role_id = ?, status = ?, avatar = ? WHERE id = ?");
-                $updateStmt->bind_param("sssssissi", $name, $email, $hashedPassword, $phone, $address, $role_id, $status, $avatarName, $id);
-            } else {
-                $updateStmt = $conn->prepare("UPDATE admins SET name = ?, email = ?, phone = ?, address = ?, role_id = ?, status = ?, avatar = ? WHERE id = ?");
-                $updateStmt->bind_param("ssssissi", $name, $email, $phone, $address, $role_id, $status, $avatarName, $id);
-            }
+            if ($error === '') {
+                if (!empty($password)) {
+                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                    $updateStmt = $conn->prepare("UPDATE admins SET name = ?, email = ?, password_hash = ?, phone = ?, address = ?, role_id = ?, status = ?, avatar = ? WHERE id = ?");
+                    $updateStmt->bind_param("sssssissi", $name, $email, $hashedPassword, $phone, $address, $role_id, $status, $avatarName, $id);
+                } else {
+                    $updateStmt = $conn->prepare("UPDATE admins SET name = ?, email = ?, phone = ?, address = ?, role_id = ?, status = ?, avatar = ? WHERE id = ?");
+                    $updateStmt->bind_param("ssssissi", $name, $email, $phone, $address, $role_id, $status, $avatarName, $id);
+                }
 
-            if ($updateStmt->execute()) {
-                logActivity($conn, getCurrentAdminId(), "Updated user ID: $id ($name)", "User Management");
-                $successScript = "
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Updated!',
-                        text: 'User details updated successfully!',
-                        confirmButtonColor: '#343a40',
-                        timer: 2000,
-                        showConfirmButton: false
-                    }).then(() => {
-                        window.location.href = 'users.php';
-                    });
-                ";
-            } else {
-                error_log('Unable to update user: ' . $updateStmt->error);
-                $error = 'The user could not be updated. Please try again.';
+                if ($updateStmt->execute()) {
+                    logActivity($conn, getCurrentAdminId(), "Updated user ID: $id ($name)", "User Management");
+                    $successScript = "
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Updated!',
+                            text: 'User details updated successfully!',
+                            confirmButtonColor: '#343a40',
+                            timer: 2000,
+                            showConfirmButton: false
+                        }).then(() => {
+                            window.location.href = 'users.php';
+                        });
+                    ";
+                } else {
+                    error_log('Unable to update user: ' . $updateStmt->error);
+                    $error = 'The user could not be updated. Please try again.';
+                }
+                $updateStmt->close();
             }
-            $updateStmt->close();
         }
         }
     }

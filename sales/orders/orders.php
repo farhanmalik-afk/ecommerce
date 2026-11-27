@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../../config.php";
 require_once __DIR__ . '/order-trash-helper.php';
 $canCreateOrders = appUserCan('orders', 'create');
@@ -44,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete'])) {
 }
 
 // Get Filters, Search Queries & Pagination
-$filter_status = isset($_GET['status']) ? trim($_GET['status']) : '';
 $search_query = isset($_GET['search']) ? trim($_GET['search']) : '';
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $per_page_options = [10, 25, 50, 100];
@@ -89,21 +87,12 @@ include "../../layouts/header.php";
                     </div>
                 </div>
                 
-                <!-- Search & Status Filter Form -->
+                <!-- Order Search Form -->
                 <div class="col-md-8">
                     <form method="GET" action="orders.php" class="d-flex justify-content-md-end align-items-center gap-2 flex-wrap">
                         <div class="input-group input-group-sm" style="width: 240px;">
                             <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
                             <input type="text" name="search" class="form-control" placeholder="Search name or ID..." value="<?php echo htmlspecialchars($search_query); ?>">
-                        </div>
-
-                        <div style="width: 140px;">
-                           <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
-                          <option value="">All Statuses</option>
-                                 <?php foreach (['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'] as $status_option): ?>
-                                     <option value="<?php echo $status_option; ?>" <?php echo $filter_status === $status_option ? 'selected' : ''; ?>><?php echo $status_option; ?></option>
-                                 <?php endforeach; ?>
-                          </select>
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <label for="ordersPerPage" class="small text-muted text-nowrap mb-0">Show on page</label>
@@ -114,7 +103,7 @@ include "../../layouts/header.php";
                             </select>
                         </div>
 
-                        <?php if(!empty($filter_status) || !empty($search_query)): ?>
+                        <?php if (!empty($search_query)): ?>
                             <a href="orders.php" class="btn btn-outline-secondary btn-sm">Reset</a>
                         <?php endif; ?>
                     </form>
@@ -136,7 +125,7 @@ include "../../layouts/header.php";
         </div>
         <?php endif; ?>
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0" id="ordersTable">
+            <table class="table table-hover align-middle mb-0" id="ordersTable" data-sortable-table>
                 <thead class="table-light text-uppercase fs-7">
                     <tr>
                         <?php if ($canDeleteOrders): ?><th class="py-3 ps-3 order-select-column d-none">Select</th><?php endif; ?>
@@ -150,32 +139,15 @@ include "../../layouts/header.php";
                 </thead>
                 <tbody>
                     <?php
-                    // Fetch orders with filters and pagination
-                    $sql = "SELECT o.*, 
+                    // Fetch active orders for search and pagination
+                    $sql = "SELECT o.*,
                             COALESCE(c.name, 'Walk-in Customer') as customer_name, 
                             COALESCE(c.email, '') as customer_email 
                             FROM orders o 
-                            LEFT JOIN customers c ON o.customer_id = c.id WHERE o.is_deleted = 0";
-                    
-                    $params = [];
-                    $types = "";
-
-                    if (!empty($filter_status)) {
-                        $sql .= " AND o.status = ?";
-                        $params[] = $filter_status;
-                        $types .= "s";
-                    }
-
-                    $sql .= " ORDER BY o.id DESC";
-
-                    if (!empty($params)) {
-                        $stmt = $conn->prepare($sql);
-                        $stmt->bind_param($types, ...$params);
-                        $stmt->execute();
-                        $orders_query = $stmt->get_result();
-                    } else {
-                        $orders_query = $conn->query($sql);
-                    }
+                            LEFT JOIN customers c ON o.customer_id = c.id
+                            WHERE o.is_deleted = 0
+                            ORDER BY o.id DESC";
+                    $orders_query = $conn->query($sql);
 
                     $matched_orders = [];
                     if ($orders_query && $orders_query->num_rows > 0) {
@@ -283,19 +255,19 @@ include "../../layouts/header.php";
                     <ul class="pagination justify-content-end mb-0">
                         <!-- Previous Page Link -->
                         <li class="page-item <?php echo ($page <= 1) ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?page=<?php echo $page - 1; ?>&per_page=<?php echo $limit; ?>&status=<?php echo urlencode($filter_status); ?>&search=<?php echo urlencode($search_query); ?>">Previous</a>
+                            <a class="page-link" href="?page=<?php echo $page - 1; ?>&per_page=<?php echo $limit; ?>&search=<?php echo urlencode($search_query); ?>">Previous</a>
                         </li>
 
                         <!-- Numbered Pages -->
                         <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                             <li class="page-item <?php echo ($page == $i) ? 'active' : ''; ?>">
-                                <a class="page-link" href="?page=<?php echo $i; ?>&per_page=<?php echo $limit; ?>&status=<?php echo urlencode($filter_status); ?>&search=<?php echo urlencode($search_query); ?>"><?php echo $i; ?></a>
+                                <a class="page-link" href="?page=<?php echo $i; ?>&per_page=<?php echo $limit; ?>&search=<?php echo urlencode($search_query); ?>"><?php echo $i; ?></a>
                             </li>
                         <?php endfor; ?>
 
                         <!-- Next Page Link -->
                         <li class="page-item <?php echo ($page >= $total_pages) ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?page=<?php echo $page + 1; ?>&per_page=<?php echo $limit; ?>&status=<?php echo urlencode($filter_status); ?>&search=<?php echo urlencode($search_query); ?>">Next</a>
+                            <a class="page-link" href="?page=<?php echo $page + 1; ?>&per_page=<?php echo $limit; ?>&search=<?php echo urlencode($search_query); ?>">Next</a>
                         </li>
                     </ul>
                 </nav>
@@ -386,5 +358,4 @@ ordersBulkForm.addEventListener('submit', (event) => {
 });
 <?php endif; ?>
 </script>
-<script src="../../assets/js/table-sort.js" defer></script>
 <?php include "../../layouts/footer.php"; ?>

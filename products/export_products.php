@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 header('Content-Type: text/csv; charset=utf-8');

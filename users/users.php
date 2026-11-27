@@ -1,6 +1,5 @@
 <?php
 // users/users.php
-session_start();
 require_once "../config.php";
 require_once "../includes/rbac.php";
 
@@ -9,6 +8,67 @@ $canCreateUsers = appUserCan('user_management', 'create');
 $canEditUsers = appUserCan('user_management', 'edit');
 $canDeleteUsers = appUserCan('user_management', 'delete');
 $showUserActions = $canEditUsers || $canDeleteUsers;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_delete'])) {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? null)) {
+        http_response_code(403);
+        exit('Invalid request token.');
+    }
+
+    $postedIds = $_POST['user_ids'] ?? [];
+    $userIds = [];
+    if (is_array($postedIds)) {
+        foreach ($postedIds as $postedId) {
+            $userId = is_scalar($postedId) ? filter_var($postedId, FILTER_VALIDATE_INT) : false;
+            if ($userId !== false && $userId > 0) {
+                $userIds[] = $userId;
+            }
+        }
+    }
+    $userIds = array_values(array_unique($userIds));
+
+    if ($userIds === []) {
+        $_SESSION['error'] = 'Select at least one user.';
+    } else {
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $params = $userIds;
+        $params[] = getCurrentAdminId();
+        $types = str_repeat('i', count($userIds) + 1);
+        $bulkStmt = null;
+        try {
+            $bulkStmt = $conn->prepare(
+                "UPDATE admins a
+                 JOIN roles r ON r.id = a.role_id
+                 SET a.status = 'Trash'
+                 WHERE a.id IN ($placeholders)
+                   AND a.id <> ?
+                   AND LOWER(TRIM(r.name)) <> 'super admin'
+                   AND a.status <> 'Trash'"
+            );
+            $bulkStmt->bind_param($types, ...$params);
+            $bulkStmt->execute();
+            $movedCount = $bulkStmt->affected_rows;
+            $bulkStmt->close();
+            $bulkStmt = null;
+
+            if ($movedCount > 0) {
+                logActivity($conn, getCurrentAdminId(), "Moved $movedCount user(s) to Trash", 'User Management');
+                $_SESSION['success'] = "$movedCount user(s) moved to Trash.";
+            } else {
+                $_SESSION['error'] = 'No eligible users were moved to Trash.';
+            }
+        } catch (Throwable $exception) {
+            if ($bulkStmt instanceof mysqli_stmt) {
+                $bulkStmt->close();
+            }
+            error_log('Unable to move selected users to Trash: ' . $exception->getMessage());
+            $_SESSION['error'] = 'Selected users could not be moved to Trash.';
+        }
+    }
+
+    header('Location: users.php');
+    exit();
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
     $targetId = filter_var($_POST['id'], FILTER_VALIDATE_INT);
@@ -106,6 +166,20 @@ $pageTitle = 'Users Management';
 include "../layouts/header.php";
 ?>
 
+<style>
+    #usersTable .user-action-button {
+        align-items: center;
+        border-radius: var(--bs-btn-border-radius, .375rem);
+        display: inline-flex;
+        flex-shrink: 0;
+        height: 30px;
+        justify-content: center;
+        line-height: 1;
+        padding: 0;
+        width: 30px;
+    }
+</style>
+
 <div class="app-main dashboard-main">
     <section class="page-head mb-4 d-flex justify-content-between align-items-center">
         <div>
@@ -126,7 +200,10 @@ include "../layouts/header.php";
                 <?php if ($canDeleteUsers): ?><button type="button" class="btn btn-outline-secondary btn-sm" id="toggleUserSelection" aria-label="Enable user selection" aria-pressed="false" title="Enable user selection">
                     <i class="bi bi-check-square"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllUsers">Select All</button><?php endif; ?>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="selectAllUsers">Select All</button>
+                <button type="submit" form="usersBulkTrashForm" class="btn btn-danger btn-sm d-none text-nowrap flex-shrink-0" id="moveSelectedUsersToTrash" disabled>
+                    <i class="bi bi-trash me-1" aria-hidden="true"></i>Move Selected to Trash
+                </button><?php endif; ?>
             </div>
 
             <div class="d-flex align-items-center gap-3 flex-wrap">
@@ -155,20 +232,25 @@ include "../layouts/header.php";
                     <i class="bi bi-arrow-down-up"></i>
                 </a>
 
-                <form method="GET" action="" class="d-flex gap-2 m-0">
+                <form method="GET" action="" class="d-flex align-items-center gap-2 flex-nowrap m-0">
                     <input type="hidden" name="limit" value="<?php echo $limit; ?>">
                     <input type="hidden" name="sort" value="<?php echo $sortOrder; ?>">
-                    <input type="text" name="search" class="form-control form-control-sm search-input" placeholder="Search user..." value="<?php echo htmlspecialchars($search); ?>">
-                    <button type="submit" class="btn btn-sm btn-dark">Search</button>
+                    <input type="text" name="search" class="form-control form-control-sm search-input flex-grow-1" style="width: auto; min-width: 0;" placeholder="Search user..." value="<?php echo htmlspecialchars($search); ?>">
+                    <button type="submit" class="btn btn-sm btn-dark flex-shrink-0">Search</button>
                     <?php if (!empty($search)): ?>
-                        <a href="users.php" class="btn btn-sm btn-outline-secondary">Reset</a>
+                        <a href="users.php" class="btn btn-sm btn-outline-secondary flex-shrink-0">Reset</a>
                     <?php endif; ?>
                 </form>
             </div>
         </div>
 
+        <?php if ($canDeleteUsers): ?>
+        <form method="POST" action="users.php" id="usersBulkTrashForm">
+            <input type="hidden" name="bulk_delete" value="1">
+            <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8'); ?>">
+        <?php endif; ?>
         <div class="table-responsive">
-            <table class="table data-table align-middle mb-0" id="usersTable">
+            <table class="table data-table align-middle mb-0" id="usersTable" data-sortable-table>
                 <thead>
                     <tr>
                         <?php if ($canDeleteUsers): ?><th class="ps-3 user-select-column d-none" style="width: 50px;">Select</th><?php endif; ?>
@@ -177,7 +259,7 @@ include "../layouts/header.php";
                         <th>Email</th>
                         <th>Role</th>
                         <th>Status</th>
-                        <?php if ($showUserActions): ?><th class="text-end pe-3">Actions</th><?php endif; ?>
+                        <?php if ($showUserActions): ?><th class="text-end pe-3" style="width: 128px;">Actions</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -189,7 +271,7 @@ include "../layouts/header.php";
                             ?>
                             <tr>
                                 <?php if ($canDeleteUsers): ?><td class="ps-3 user-select-column d-none">
-                                    <input type="checkbox" name="user_ids[]" value="<?php echo $user['id']; ?>" class="form-check-input user-checkbox m-0" aria-label="Select user">
+                                    <input type="checkbox" name="user_ids[]" value="<?php echo (int) $user['id']; ?>" class="form-check-input user-checkbox m-0" aria-label="Select user">
                                 </td><?php endif; ?>
                                 <td class="ps-3">
                                     <span class="text-muted fw-semibold" style="font-size: 0.85rem;"><?php echo $counter; ?></span>
@@ -217,16 +299,18 @@ include "../layouts/header.php";
                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                 <td><span class="badge bg-light text-dark border"><?php echo htmlspecialchars($user['role_name']); ?></span></td>
                                 <td><span class="badge <?php echo $badgeClass; ?>"><?php echo htmlspecialchars($user['status']); ?></span></td>
-                                <?php if ($showUserActions): ?><td class="text-end pe-3">
+                                <?php if ($showUserActions): ?><td class="text-end pe-3" style="width: 128px; min-width: 128px;">
+                                    <div class="d-inline-flex align-items-center gap-2">
                                     <?php if (strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
                                         <?php if ($canEditUsers && (int) $user['id'] !== getCurrentAdminId()): ?>
-                                            <button type="button" onclick="confirmUserStatusChange(<?php echo (int)$user['id']; ?>, '<?php echo htmlspecialchars($user['status'], ENT_QUOTES); ?>')" class="btn btn-sm btn-outline-warning py-0 px-2" title="Toggle Status"><i class="bi bi-power"></i></button>
+                                            <button type="button" onclick="confirmUserStatusChange(<?php echo (int)$user['id']; ?>, '<?php echo htmlspecialchars($user['status'], ENT_QUOTES); ?>')" class="btn btn-sm btn-outline-warning user-action-button" title="Toggle Status"><i class="bi bi-power"></i></button>
                                         <?php endif; ?>
-                                        <?php if ($canEditUsers): ?><a href="edit-user.php?id=<?php echo (int) $user['id']; ?>" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit User"><i class="bi bi-pencil"></i></a><?php endif; ?>
+                                        <?php if ($canEditUsers): ?><a href="edit-user.php?id=<?php echo (int) $user['id']; ?>" class="btn btn-sm btn-outline-primary user-action-button" title="Edit User"><i class="bi bi-pencil"></i></a><?php endif; ?>
                                     <?php endif; ?>
                                     <?php if ($canDeleteUsers && $user['id'] != getCurrentAdminId() && strtolower(trim((string) $user['role_name'])) !== 'super admin'): ?>
-                                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="confirmUserDelete(<?php echo (int) $user['id']; ?>, this.dataset.name)" data-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>" title="Move to Trash"><i class="bi bi-trash"></i></button>
+                                        <button type="button" class="btn btn-sm btn-danger user-action-button" onclick="confirmUserDelete(<?php echo (int) $user['id']; ?>, this.dataset.name)" data-name="<?php echo htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8'); ?>" aria-label="Move user to Trash" title="Move to Trash"><i class="bi bi-trash-fill" aria-hidden="true"></i></button>
                                     <?php endif; ?>
+                                    </div>
                                 </td><?php endif; ?>
                             </tr>
                             <?php
@@ -243,6 +327,7 @@ include "../layouts/header.php";
                 </tbody>
             </table>
         </div>
+        <?php if ($canDeleteUsers): ?></form><?php endif; ?>
 
         <?php if ($totalPages > 1): ?>
             <div class="card-footer bg-white border-top py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -291,9 +376,20 @@ function submitUserAction(action, id) {
 document.addEventListener('DOMContentLoaded', function() {
     const toggleUserSelectionButton = document.getElementById('toggleUserSelection');
     const selectAllUsersButton = document.getElementById('selectAllUsers');
+    const moveSelectedUsersToTrashButton = document.getElementById('moveSelectedUsersToTrash');
+    const usersBulkTrashForm = document.getElementById('usersBulkTrashForm');
     const userSelectColumns = document.querySelectorAll('.user-select-column');
     const userCheckboxes = document.querySelectorAll('.user-checkbox');
     let userSelectionEnabled = false;
+    let userBulkTrashConfirmed = false;
+
+    function updateUserSelectionControls() {
+        const selectedCount = document.querySelectorAll('.user-checkbox:checked').length;
+        moveSelectedUsersToTrashButton.disabled = selectedCount === 0;
+        selectAllUsersButton.textContent = userCheckboxes.length > 0 && selectedCount === userCheckboxes.length
+            ? 'Deselect All'
+            : 'Select All';
+    }
 
     if (toggleUserSelectionButton) {
         toggleUserSelectionButton.addEventListener('click', () => {
@@ -306,11 +402,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             });
             selectAllUsersButton.classList.toggle('d-none', !userSelectionEnabled);
+            moveSelectedUsersToTrashButton.classList.toggle('d-none', !userSelectionEnabled);
             toggleUserSelectionButton.setAttribute('aria-pressed', String(userSelectionEnabled));
+            toggleUserSelectionButton.setAttribute(
+                'aria-label',
+                userSelectionEnabled ? 'Disable user selection' : 'Enable user selection'
+            );
+            toggleUserSelectionButton.title = userSelectionEnabled
+                ? 'Disable user selection'
+                : 'Enable user selection';
 
             if (!userSelectionEnabled) {
                 userCheckboxes.forEach((checkbox) => { checkbox.checked = false; });
             }
+            updateUserSelectionControls();
         });
     }
 
@@ -318,9 +423,15 @@ document.addEventListener('DOMContentLoaded', function() {
         selectAllUsersButton.addEventListener('click', () => {
             const selectAll = selectAllUsersButton.textContent === 'Select All';
             userCheckboxes.forEach((checkbox) => { checkbox.checked = selectAll; });
-            selectAllUsersButton.textContent = selectAll ? 'Deselect All' : 'Select All';
+            updateUserSelectionControls();
         });
     }
+
+    document.addEventListener('change', (event) => {
+        if (event.target.matches('.user-checkbox')) {
+            updateUserSelectionControls();
+        }
+    });
 
     document.querySelectorAll('#usersTable tbody tr').forEach((row) => {
         row.addEventListener('click', (event) => {
@@ -328,9 +439,33 @@ document.addEventListener('DOMContentLoaded', function() {
             const checkbox = row.querySelector('.user-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
+                updateUserSelectionControls();
             }
         });
     });
+
+    if (usersBulkTrashForm) {
+        usersBulkTrashForm.addEventListener('submit', (event) => {
+            if (userBulkTrashConfirmed) return;
+            event.preventDefault();
+            const selectedCount = document.querySelectorAll('.user-checkbox:checked').length;
+            if (selectedCount < 1) return;
+
+            Swal.fire({
+                title: 'Move selected users to Trash?',
+                text: selectedCount + ' user(s) can be restored later from the Trash Bin.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                confirmButtonText: 'Move to Trash'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    userBulkTrashConfirmed = true;
+                    usersBulkTrashForm.submit();
+                }
+            });
+        });
+    }
 
 });
 
@@ -373,7 +508,10 @@ function confirmUserStatusChange(id, currentStatus) {
     Swal.fire({
         icon: 'success',
         title: 'Success!',
-        text: '<?php echo addslashes($_SESSION['success']); ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['success'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         timer: 2000,
         showConfirmButton: false
     });
@@ -385,7 +523,10 @@ function confirmUserStatusChange(id, currentStatus) {
     Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: '<?php echo addslashes($_SESSION['error']); ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['error'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         confirmButtonColor: '#dc3545'
     });
 </script>

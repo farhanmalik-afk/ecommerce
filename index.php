@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "config.php";
 include "lang.php"; // Load language translations
 
@@ -12,6 +11,7 @@ $canViewProducts = appUserCan('products');
 $canViewCustomers = appUserCan('customers');
 $canViewOrders = appUserCan('orders');
 $canViewInventory = appUserCan('inventory');
+$canViewPayments = appUserCan('payments');
 $canCreateOrders = appUserCan('orders', 'create');
 $canAdjustStock = appUserCan('stock_management', 'edit');
 
@@ -19,6 +19,7 @@ $canAdjustStock = appUserCan('stock_management', 'edit');
 $total_products = 0;
 $total_customers = 0;
 $total_orders = 0;
+$total_payments = 0;
 $delivered_orders = 0;
 $total_inventory_items = 0;
 $low_stock_count = 0;
@@ -66,6 +67,14 @@ if ($canViewInventory) {
     }
 }
 
+if ($canViewPayments) {
+    $payments_query = $conn->query("SELECT COUNT(*) as total FROM payments");
+    if ($payments_query) {
+        $payments_data = $payments_query->fetch_assoc();
+        $total_payments = $payments_data['total'] ?? 0;
+    }
+}
+
 // Maintenance Mode Check for Visitors
 if (isset($appSettings['maintenance_mode']) && $appSettings['maintenance_mode'] === '1') {
     if (empty($_SESSION['admin_logged_in'])) {
@@ -89,11 +98,26 @@ include "layouts/header.php";
             <h1><?= htmlspecialchars($langData['dashboard']) ?></h1>
             <p class="text-muted"><?= htmlspecialchars($langData['dashboard_sub']) ?></p>
         </div>
-        <?php if ($canCreateOrders || $canViewInventory): ?>
-        <div class="d-flex flex-wrap gap-2">
+        <?php if ($canCreateOrders || $canViewOrders || $canViewProducts || $canViewCustomers || $canViewInventory || $canViewPayments): ?>
+        <div class="dashboard-quick-actions d-flex flex-wrap gap-2">
             <?php if ($canCreateOrders): ?>
             <a href="sales/orders/add-order.php" class="btn btn-outline-dark btn-sm">
                 <i class="bi bi-plus-lg me-1"></i> <?= htmlspecialchars($langData['add_order']) ?>
+            </a>
+            <?php endif; ?>
+            <?php if ($canViewOrders): ?>
+            <a href="sales/orders/orders.php" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-bag-check me-1"></i> Orders
+            </a>
+            <?php endif; ?>
+            <?php if ($canViewProducts): ?>
+            <a href="products/products.php" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-box-seam me-1"></i> Products
+            </a>
+            <?php endif; ?>
+            <?php if ($canViewCustomers): ?>
+            <a href="customers/customers.php" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-people me-1"></i> Customers
             </a>
             <?php endif; ?>
             <?php if ($canViewInventory): ?>
@@ -101,17 +125,22 @@ include "layouts/header.php";
                 <i class="bi bi-boxes me-1"></i> <?= htmlspecialchars($langData['manage_inventory']) ?>
             </a>
             <?php endif; ?>
+            <?php if ($canViewPayments): ?>
+            <a href="sales/payments/payments.php" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-credit-card me-1"></i> Payments
+            </a>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </section>
 
     <!-- Stat Cards Row -->
-    <?php if ($canViewProducts || $canViewCustomers || $canViewInventory): ?>
+    <?php if ($canViewProducts || $canViewCustomers || $canViewInventory || $canViewPayments): ?>
     <div class="row g-3 mb-4 dashboard-stats">
         <!-- Total Products Card -->
         <?php if ($canViewProducts): ?>
         <div class="col-xl-3 col-sm-6">
-            <div class="card stat-card border-0 shadow-sm">
+            <a href="products/products.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View products">
                 <div class="card-body">
                     <div>
                         <p class="stat-label"><?= htmlspecialchars($langData['total_products']) ?></p>
@@ -124,14 +153,14 @@ include "layouts/header.php";
                 <div class="stat-foot">
                     <span class="text-up"><i class="bi bi-check-circle-fill"></i> <?php echo $active_products; ?> Active</span> in catalog
                 </div>
-            </div>
+            </a>
         </div>
         <?php endif; ?>
 
         <!-- Total Customers Card -->
         <?php if ($canViewCustomers): ?>
         <div class="col-xl-3 col-sm-6">
-            <div class="card stat-card border-0 shadow-sm">
+            <a href="customers/customers.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View customers">
                 <div class="card-body">
                     <div>
                         <p class="stat-label"><?= htmlspecialchars($langData['total_customers']) ?></p>
@@ -144,14 +173,14 @@ include "layouts/header.php";
                 <div class="stat-foot">
                     <span class="text-up"><i class="bi bi-person-check-fill"></i> <?php echo $active_customers; ?> Active</span> registered
                 </div>
-            </div>
+            </a>
         </div>
         <?php endif; ?>
 
         <!-- Inventory / Stock Card -->
         <?php if ($canViewInventory): ?>
         <div class="col-xl-3 col-sm-6">
-            <div class="card stat-card border-0 shadow-sm">
+            <a href="inventory/inventory.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View inventory">
                 <div class="card-body">
                     <div>
                         <p class="stat-label"><?= htmlspecialchars($langData['total_stock_units']) ?></p>
@@ -164,7 +193,26 @@ include "layouts/header.php";
                 <div class="stat-foot">
                     <span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill"></i> <?php echo $low_stock_count; ?></span> Low stock items (≤ <?= $lowStockLimit ?>)
                 </div>
-            </div>
+            </a>
+        </div>
+        <?php endif; ?>
+
+        <?php if ($canViewPayments): ?>
+        <div class="col-xl-3 col-sm-6">
+            <a href="sales/payments/payments.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View payments">
+                <div class="card-body">
+                    <div>
+                        <p class="stat-label">Payments</p>
+                        <h3 class="stat-value"><?php echo number_format($total_payments); ?></h3>
+                    </div>
+                    <div class="stat-icon bg-a">
+                        <i class="bi bi-credit-card"></i>
+                    </div>
+                </div>
+                <div class="stat-foot">
+                    Recorded transactions
+                </div>
+            </a>
         </div>
         <?php endif; ?>
     </div>
@@ -175,7 +223,7 @@ include "layouts/header.php";
     <div class="row g-3 mb-4 dashboard-order-stats">
         <!-- Total Orders Card -->
         <div class="col-xl-6 col-sm-6">
-            <div class="card stat-card border-0 shadow-sm">
+            <a href="sales/orders/orders.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View orders">
                 <div class="card-body">
                     <div>
                         <p class="stat-label"><?= htmlspecialchars($langData['total_orders']) ?></p>
@@ -188,12 +236,12 @@ include "layouts/header.php";
                 <div class="stat-foot">
                     Customer sales recorded
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- Delivered Orders Card -->
         <div class="col-xl-6 col-sm-6">
-            <div class="card stat-card border-0 shadow-sm">
+            <a href="sales/orders/orders.php" class="card stat-card border-0 shadow-sm text-reset text-decoration-none" aria-label="View delivered orders">
                 <div class="card-body">
                     <div>
                         <p class="stat-label"><?= htmlspecialchars($langData['delivered_orders']) ?></p>
@@ -206,23 +254,23 @@ include "layouts/header.php";
                 <div class="stat-foot">
                     Successfully completed orders
                 </div>
-            </div>
+            </a>
         </div>
     </div>
     <?php endif; ?>
 
-    <!-- Data Tables Row (Products & Customers) -->
-    <?php if ($canViewProducts || $canViewCustomers): ?>
-    <div class="row g-4 mb-4">
-        <!-- Recent Products Table -->
-        <?php if ($canViewProducts): ?>
-        <div class="<?= $canViewCustomers ? 'col-lg-7' : 'col-lg-6 offset-lg-3' ?>">
+    <!-- Dashboard Tables & Operations -->
+    <?php if ($canViewProducts || $canViewCustomers || $canViewInventory || $canViewOrders): ?>
+    <div class="row g-4 mb-4 align-items-start">
+        <?php if ($canViewProducts || $canViewInventory): ?>
+        <div class="<?= ($canViewCustomers || $canViewOrders) ? 'col-lg-7' : 'col-12' ?> d-flex flex-column gap-4">
+            <?php if ($canViewProducts): ?>
             <div class="card border-0 shadow-sm table-card dashboard-panel">
                 <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
                     <h6 class="m-0 font-weight-bold"><?= htmlspecialchars($langData['recent_products']) ?></h6>
                     <a href="products/products.php" class="btn btn-sm btn-link text-decoration-none p-0"><?= htmlspecialchars($langData['view_all']) ?></a>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive" style="overflow-x: auto; max-width: 100%;">
                     <table class="table data-table align-middle mb-0">
                         <thead>
                             <tr>
@@ -267,18 +315,63 @@ include "layouts/header.php";
                     </table>
                 </div>
             </div>
+            <?php endif; ?>
+
+            <?php if ($canViewInventory): ?>
+            <div class="card border-0 shadow-sm dashboard-panel">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
+                    <h6 class="m-0 font-weight-bold text-dark"><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i> <?= htmlspecialchars($langData['low_stock_warning']) ?></h6>
+                    <a href="inventory/inventory.php" class="btn btn-sm btn-outline-dark"><?= htmlspecialchars($langData['view_all']) ?></a>
+                </div>
+                <div class="table-responsive" style="overflow-x: auto; max-width: 100%;">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th class="ps-3">Product Name</th>
+                                <th>Quantity</th>
+                                <?php if ($canAdjustStock): ?><th class="text-end pe-3">Action</th><?php endif; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $low_stock_query = $conn->query("SELECT p.name, i.quantity, p.id as product_id
+                                                       FROM inventory i
+                                                       JOIN products p ON i.product_id = p.id
+                                                       WHERE i.quantity <= $lowStockLimit
+                                                       ORDER BY i.quantity ASC LIMIT 5");
+                            if ($low_stock_query && $low_stock_query->num_rows > 0) {
+                                while ($ls = $low_stock_query->fetch_assoc()) {
+                                    ?>
+                                    <tr>
+                                        <td class="ps-3 fw-bold"><?php echo htmlspecialchars($ls['name']); ?></td>
+                                        <td><span class="badge bg-danger"><?php echo $ls['quantity']; ?> units</span></td>
+                                        <?php if ($canAdjustStock): ?><td class="text-end pe-3">
+                                            <a href="inventory/stock-adjust.php?product_id=<?php echo $ls['product_id']; ?>" class="btn btn-sm btn-dark py-0 px-2" style="font-size: 11px;">Restock</a>
+                                        </td><?php endif; ?>
+                                    </tr>
+                                    <?php
+                                }
+                            } else {
+                                echo "<tr><td colspan='" . ($canAdjustStock ? '3' : '2') . "' class='text-center text-muted py-3'>All products have sufficient stock!</td></tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
 
-        <!-- Recent Customers Table -->
-        <?php if ($canViewCustomers): ?>
-        <div class="<?= $canViewProducts ? 'col-lg-5' : 'col-lg-6 offset-lg-3' ?>">
+        <?php if ($canViewCustomers || $canViewOrders): ?>
+        <div class="<?= ($canViewProducts || $canViewInventory) ? 'col-lg-5' : 'col-12' ?> d-flex flex-column gap-4">
+            <?php if ($canViewCustomers): ?>
             <div class="card border-0 shadow-sm table-card dashboard-panel">
                 <div class="table-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
                     <h6 class="m-0 font-weight-bold"><?= htmlspecialchars($langData['recent_customers']) ?></h6>
                     <a href="customers/customers.php" class="btn btn-sm btn-link text-decoration-none p-0"><?= htmlspecialchars($langData['view_all']) ?></a>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive" style="overflow-x: auto; max-width: 100%;">
                     <table class="table data-table align-middle mb-0">
                         <thead>
                             <tr>
@@ -316,70 +409,15 @@ include "layouts/header.php";
                     </table>
                 </div>
             </div>
-        </div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
+            <?php endif; ?>
 
-    <!-- Inventory Overview & Recent Orders Row -->
-    <?php if ($canViewInventory || $canViewOrders): ?>
-    <div class="row g-4 mb-4">
-        <!-- Low Stock Alert / Inventory Quick View -->
-        <?php if ($canViewInventory): ?>
-        <div class="col-lg-6">
-            <div class="card border-0 shadow-sm dashboard-panel">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
-                    <h6 class="m-0 font-weight-bold text-dark"><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i> <?= htmlspecialchars($langData['low_stock_warning']) ?></h6>
-                    <a href="inventory/inventory.php" class="btn btn-sm btn-outline-dark"><?= htmlspecialchars($langData['view_all']) ?></a>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th class="ps-3">Product Name</th>
-                                <th>Quantity</th>
-                                <?php if ($canAdjustStock): ?><th class="text-end pe-3">Action</th><?php endif; ?>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $low_stock_query = $conn->query("SELECT p.name, i.quantity, p.id as product_id 
-                                                       FROM inventory i 
-                                                       JOIN products p ON i.product_id = p.id 
-                                                       WHERE i.quantity <= $lowStockLimit 
-                                                       ORDER BY i.quantity ASC LIMIT 5");
-                            if ($low_stock_query && $low_stock_query->num_rows > 0) {
-                                while ($ls = $low_stock_query->fetch_assoc()) {
-                                    ?>
-                                    <tr>
-                                        <td class="ps-3 fw-bold"><?php echo htmlspecialchars($ls['name']); ?></td>
-                                        <td><span class="badge bg-danger"><?php echo $ls['quantity']; ?> units</span></td>
-                                        <?php if ($canAdjustStock): ?><td class="text-end pe-3">
-                                            <a href="inventory/stock-adjust.php?product_id=<?php echo $ls['product_id']; ?>" class="btn btn-sm btn-dark py-0 px-2" style="font-size: 11px;">Restock</a>
-                                        </td><?php endif; ?>
-                                    </tr>
-                                    <?php
-                                }
-                            } else {
-                                echo "<tr><td colspan='" . ($canAdjustStock ? '3' : '2') . "' class='text-center text-muted py-3'>All products have sufficient stock!</td></tr>";
-                            }
-                            ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
-
-        <!-- Recent Customer Orders Table Section -->
-        <?php if ($canViewOrders): ?>
-        <div class="col-lg-6">
+            <?php if ($canViewOrders): ?>
             <div class="card border-0 shadow-sm dashboard-panel">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center border-bottom">
                     <h6 class="m-0 font-weight-bold text-dark"><?= htmlspecialchars($langData['recent_orders']) ?></h6>
                     <a href="sales/orders/orders.php" class="btn btn-sm btn-outline-secondary"><?= htmlspecialchars($langData['view_all']) ?></a>
                 </div>
-                <div class="table-responsive">
+                <div class="table-responsive" style="overflow-x: auto; max-width: 100%;">
                     <table class="table table-sm align-middle mb-0">
                         <thead>
                             <tr>
@@ -426,6 +464,7 @@ include "layouts/header.php";
                     </table>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </div>

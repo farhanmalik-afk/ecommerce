@@ -1,11 +1,29 @@
 <?php
-session_start();
 include "../config.php";
 
 if (isset($_POST['import_submit'])) {
-    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
-        $file = fopen($_FILES['csv_file']['tmp_name'], 'r');
-        
+    if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] === UPLOAD_ERR_OK) {
+        try {
+            $filename = safe_upload(
+                $_FILES['csv_file'],
+                __DIR__ . '/../uploads/imports',
+                PHP_INT_MAX,
+                ['csv' => ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel', 'text/x-csv']]
+            );
+        } catch (RuntimeException $exception) {
+            $_SESSION['swal_error'] = 'Please upload a valid CSV file!';
+            header("Location: products.php");
+            exit();
+        }
+
+        $csvPath = __DIR__ . '/../uploads/imports/' . $filename;
+        $file = fopen($csvPath, 'r');
+        if ($file === false) {
+            unlink($csvPath);
+            throw new RuntimeException('Unable to read the uploaded product CSV.');
+        }
+
+        try {
         // Skip header row
         $header = fgetcsv($file); 
 
@@ -73,10 +91,14 @@ if (isset($_POST['import_submit'])) {
                 }
             }
         }
-        fclose($file);
-
         // ⭐️ Jaise hi import khatam ho, yeh query automatically chal kar saare '0' ya blank status ko 'Active' kar degi ⭐️
         mysqli_query($conn, "UPDATE products SET status = 'Active' WHERE status = '0' OR status = '' OR status IS NULL");
+        } finally {
+            fclose($file);
+            if (!unlink($csvPath) && is_file($csvPath)) {
+                error_log('Unable to remove the temporary product CSV upload.');
+            }
+        }
         
         $_SESSION['swal_success'] = "$successCount products imported successfully and all statuses set to Active!";
         header("Location: products.php");

@@ -1,19 +1,7 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    ini_set('session.use_strict_mode', '1');
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path' => '/',
-        'secure' => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-}
-
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-$_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
+require_once __DIR__ . '/includes/security.php';
+secure_session_start();
+csrf_token();
 
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
@@ -63,12 +51,17 @@ $conn->set_charset("utf8mb4");
 require_once __DIR__ . '/includes/app-settings.php';
 require_once __DIR__ . '/includes/admin-notifications.php';
 require_once __DIR__ . '/includes/rbac.php';
+require_once __DIR__ . '/includes/two-factor.php';
 
-$publicEntryPoints = ['login.php', 'setup-admin.php', '403.php'];
+ensureSecuritySchema($conn);
+ensureTwoFactorSchema($conn);
+enforce_post_csrf();
+
+$publicEntryPoints = ['login.php', 'verify-two-factor.php', 'setup-admin.php', '403.php'];
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
 
 if (!in_array($currentScript, $publicEntryPoints, true)) {
-    checkAuth();
+    require_auth();
     if ($currentScript !== 'logout.php') {
         $accessContext = getRequestAccessContext();
         if ($accessContext !== null) {

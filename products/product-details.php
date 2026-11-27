@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 $product_id = isset($_GET['id']) ? intval($_GET['id']) : 0;

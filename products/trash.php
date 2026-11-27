@@ -1,6 +1,5 @@
 <?php
 
-session_start();
 include "../config.php";
 require_once __DIR__ . '/../sales/orders/order-trash-helper.php';
 
@@ -403,7 +402,7 @@ if (isset($_POST['bulk_action'])) {
 
 $pageTitle = ucfirst($trashType) . ' Trash Bin';
 $pageSubtitle = 'Restore deleted records or permanently delete them.';
-$parent = $trashType === 'orders' ? ['Orders', '../sales/orders/orders.php'] : ($trashType === 'customers' ? ['Customers', '../customers/customers.php'] : ($trashType === 'users' ? ['Users', 'users.php'] : ['Products', 'products.php']));
+$parent = $trashType === 'orders' ? ['Orders', '../sales/orders/orders.php'] : ($trashType === 'customers' ? ['Customers', '../customers/customers.php'] : ($trashType === 'users' ? ['Users', '../users/users.php'] : ['Products', 'products.php']));
 $activeModule = 'trash';
 
 $ordersResult = $trashType === 'orders'
@@ -464,7 +463,7 @@ include __DIR__ . '/../layouts/header.php';
                 <?php if ($trashPermissions['users']['view']): ?><a href="trash.php?type=users" class="btn btn-sm rounded-pill px-3 <?php echo $trashType === 'users' ? 'btn-dark' : 'btn-outline-secondary'; ?>">
                     <i class="bi bi-person-fill me-1"></i> Users
                 </a><?php endif; ?>
-                <a href="<?php echo $trashType === 'orders' ? '../sales/orders/orders.php' : ($trashType === 'customers' ? '../customers/customers.php' : ($trashType === 'notifications' ? '../notifications.php' : ($trashType === 'users' ? 'users.php' : 'products.php'))); ?>" class="btn btn-outline-dark btn-sm rounded-pill px-3">
+                <a href="<?php echo $trashType === 'orders' ? '../sales/orders/orders.php' : ($trashType === 'customers' ? '../customers/customers.php' : ($trashType === 'notifications' ? '../notifications.php' : ($trashType === 'users' ? '../users/users.php' : 'products.php'))); ?>" class="btn btn-outline-dark btn-sm rounded-pill px-3">
                     <i class="bi bi-arrow-left me-1"></i> Back
                 </a>
             </div>
@@ -494,7 +493,7 @@ include __DIR__ . '/../layouts/header.php';
             </div>
             <?php endif; ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-sortable-table>
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
                             <?php if ($showTrashActions): ?><th class="py-3 ps-3 trash-select-column d-none">Select</th><?php endif; ?>
@@ -581,7 +580,7 @@ include __DIR__ . '/../layouts/header.php';
             </div>
             <?php endif; ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-sortable-table>
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
                             <?php if ($showTrashActions): ?><th class="py-3 ps-3 order-trash-select-column d-none">Select</th><?php endif; ?>
@@ -654,7 +653,7 @@ include __DIR__ . '/../layouts/header.php';
             </div>
             <?php endif; ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-sortable-table>
                     <thead class="table-light">
                         <tr>
                             <?php if ($showTrashActions): ?><th class="customer-trash-select-column d-none">Select</th><?php endif; ?>
@@ -710,7 +709,7 @@ include __DIR__ . '/../layouts/header.php';
             </div>
             <?php endif; ?>
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-sortable-table>
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
                             <?php if ($showTrashActions): ?><th class="py-3 ps-3 user-trash-select-column d-none">Select</th><?php endif; ?>
@@ -782,7 +781,7 @@ include __DIR__ . '/../layouts/header.php';
             <?php endif; ?>
 
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle" data-sortable-table>
                     <thead class="table-light text-uppercase fs-7">
                         <tr>
                             <?php if ($showTrashActions): ?><th class="py-3 ps-3 notification-trash-select-column d-none" style="width: 50px;">Select</th><?php endif; ?>

@@ -1,5 +1,4 @@
 <?php
-session_start();
 include "../config.php";
 
 use PHPMailer\PHPMailer\PHPMailer;
@@ -71,23 +70,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         } elseif ($profileImageUpload['size'] > 2 * 1024 * 1024) {
             $error_msg = "Profile image must be no larger than 2 MB.";
         } else {
-            $target_dir = "../uploads/";
-            if (!is_dir($target_dir)) {
-                mkdir($target_dir, 0755, true);
-            }
-
-            $image_name = time() . "_" . basename($profileImageUpload["name"]);
-            $target_file = $target_dir . $image_name;
-            $imageFileType = strtolower(pathinfo($target_file, PATHINFO_EXTENSION));
-
-            $allowed_types = array("jpg", "jpeg", "png", "webp");
-            if (in_array($imageFileType, $allowed_types)) {
-                if (move_uploaded_file($profileImageUpload["tmp_name"], $target_file)) {
-                    $profile_image = $image_name;
-                } else {
-                    $error_msg = "There was an error uploading the image.";
-                }
-            } else {
+            try {
+                $profile_image = safe_upload($profileImageUpload, __DIR__ . '/../uploads', 2 * 1024 * 1024);
+            } catch (RuntimeException $exception) {
                 $error_msg = "Only JPG, JPEG, PNG, and WEBP files are allowed.";
             }
         }
@@ -224,6 +209,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             </div>
 
             <form id="customerForm" action="" method="POST" enctype="multipart/form-data" autocomplete="off" novalidate>
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrfToken(), ENT_QUOTES, 'UTF-8') ?>">
               <input type="file" id="profileImageInput" name="profile_image" class="d-none" accept="image/*" onchange="previewImage(event)">
 
               <div class="row g-3">
@@ -615,7 +601,10 @@ document.getElementById('customerForm').addEventListener('submit', function(e) {
     Swal.fire({
         icon: 'error',
         title: 'Error',
-        text: '<?php echo $_SESSION['swal_error']; ?>',
+        text: <?= json_encode(
+            (string) $_SESSION['swal_error'],
+            JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT
+        ) ?>,
         confirmButtonColor: '#d33'
     });
     
